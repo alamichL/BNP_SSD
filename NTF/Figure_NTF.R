@@ -67,7 +67,7 @@ dev.off()
 
 
 ### Plot cross_V ###
-crossV <- readRDS("~/Documents/Github/BNP_SSD/NTF/save/crossV_data_less13.rds")
+crossV <- readRDS("~/Documents/Github/BNP_SSD/NTF/save/crossV_data.rds")
 pdf(paste0(fig_path, "cross_validation_figure.pdf"), width = 12, height= 6)
 cross_validation_plot_label(crossV, 47, 5)
 dev.off()

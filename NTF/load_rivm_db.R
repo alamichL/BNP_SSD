@@ -374,6 +374,6 @@ get_log_dat_noname = function(contaminant, cens = FALSE,
     })
 }
 
-saveRDS(rivm_db_hickey_filter, file = 'rivm_db_hickey_filter.RDS')
+saveRDS(rivm_db_hickey_filter, file = '~/Documents/Github/BNP_SSD/data/rivm_db_hickey_filter.RDS')
 
 
