@@ -1,0 +1,767 @@
+---
+title: "Figures for the JRSS article"
+author: "Guillaume"
+output: 
+  html_document:
+    toc: true
+    theme: united
+    number_sections: true
+---
+
+
+```{r,include=FALSE}
+library(knitr)
+opts_chunk$set(
+  concordance = TRUE,
+  warning = FALSE,
+  cache = T,
+  message = FALSE,
+  echo = FALSE
+)
+
+library(tidyverse)
+library(parallel)
+library(fitdistrplus)
+library(gridExtra)
+library(BNPdensity)
+library(survival)
+library(ggthemes)
+library(sn)
+library(forcats)
+```
+
+
+```{r, cache=FALSE}
+source('scripts/SSD_fit_functions.R')
+source('scripts/fit_analysis_functions.R')
+```
+
+#Analysis on simulated data
+
+
+```{r}
+
+make_fname = function(dataset_type, idx, method){
+  paste('chains_model_comparison_simulated_data/',
+        dataset_type,'_', 
+        idx,'_', 
+        method, '.Rdata', sep = '')
+}
+
+
+create_funlist = function(nit){
+  list('normal_ssd' = fit_normal_ssd_on_log_data, 
+       # 'logis_ssd' = fit_logis_ssd_on_log_data,
+       'kde_ssd' = fit_kernel_mixture_ssd_on_log_data,
+       'BNP_mixture_uniform_prior' = function(x) fit_BNP_mixture_ssd_on_log_data_uniform(ddat = x, mu.pz0 = 0.1, sigma.pz0 = 1.5, Nit = nit)#,       
+       # 'BNP_mixture_truncated_normal_prior' = function(x) fit_BNP_mixture_ssd_on_log_data_truncated_normal(ddat = x, mu.pz0 = 0.5, sigma.pz0 = 1, Nit = nit),
+       # 'semi_BNP_mixture_gamma_prior' = function(x) fit_semi_BNP_mixture_ssd_on_log_data(ddat = x, Nit = nit)
+       )
+}
+
+Var = function(x,...){
+  y = length(x)
+  var(x,...)*(y-1)/y
+}
+
+
+Sd = function(x,...){
+  y = length(x)
+  sd(x,...)*sqrt((y-1)/y)
+}
+
+create_normal_datasets = function(size = 10, number = 40){
+  set.seed(0)
+  1:number %>% 
+    lapply(FUN =  function(x) rnorm(n = size, mean = 0, sd = 1))
+}
+create_student_datasets = function(size = 10, number = 40, df = 3, ncp = -2){
+  set.seed(0)
+  1:number %>% 
+    lapply(FUN =  function(x) rt(n = size, df = df, ncp = ncp))
+}
+
+normalise_weights = function(unnormalized_weights){
+  unnormalized_weights / sum(unnormalized_weights)
+}
+
+rmixnorm = function(n, mus, sigmas, probs) {
+  if(sum(probs)!=1) stop('check all the weights')
+  if (length(unique(length(mus), length(sigmas), length(probs))) != 1){
+    stop('Check your number of means, sds, unnormalized_weights')
+  }
+  
+  rmultinom(n = 1, size = n, prob = probs) %>%
+    as.numeric() %>%
+    (function(x) {
+      mapply(FUN = function(n_, mean_, sd_) {rnorm(n_, mean_, sd_)}, x, mus, sigmas)
+    }) %>%
+    unlist() %>% 
+    as.vector()
+}
+
+create_multimodal_datasets = function(size = 10, number = 40, mus, sigmas, unnormalized_weights) {
+  set.seed(0)
+  1:number %>%
+    lapply(
+      FUN =  function(x) {
+        rmixnorm(
+          n = size, mus = mus, sigmas = sigmas, probs = unnormalized_weights %>% normalise_weights
+        )
+      }
+    )
+}
+
+library(sn)
+
+create_skewed_normal_datasets = function(size = 10, number = 40, xi = 0, omega = 1, alpha = -3){
+  set.seed(0)
+  1:number %>% 
+    lapply(FUN =  function(x) rsn(n = size, xi = xi, omega = omega, alpha = alpha)%>% as.numeric()) 
+}
+
+create_dataset_list = function(){
+  dataset_creators_list = list('normal' = create_normal_datasets,
+                               'student' = create_student_datasets,
+                               'multimodal' = function(size, number) create_multimodal_datasets(size = size, number = number,
+                                                                                                mus = c(-2, 5),
+                                                                                                sigmas = c(1,1),
+                                                                                                unnormalized_weights = c(2,4)))
+  sizes = c(10,20,50,100)
+  expand.grid(dataset_creators_list %>% names, sizes) %>% 
+    (function(grid){
+      mapply(FUN = function(creator_name, size){dataset_creators_list[[creator_name]](size = size, number = 40)}, grid$Var1, grid$Var2, SIMPLIFY = F) %>% 
+        setNames(mapply(FUN = function(creator_name, size) paste(creator_name, size, sep = ''), grid$Var1, grid$Var2, SIMPLIFY = F))})
+}
+
+load_or_compute = function(dataset_type, idx, method){
+  if(method%in%c('normal_ssd', 'logis_ssd', 'kde_ssd')) compute(dataset_type, idx, method)
+  else{
+    fname = make_fname(dataset_type, idx, method)
+    if(file.exists(fname)) readRDS(fname)
+    else compute_and_save_and_return(dataset_type, idx, method)
+    }
+}
+
+save_if_not_present = function(dataset_type, idx, method){
+  if(method%in%c('normal_ssd', 'logis_ssd', 'kde_ssd')) return()
+  else{
+    fname = make_fname(dataset_type, idx, method)
+    if(file.exists(fname)) return()
+    else compute_and_save(dataset_type, idx, method)
+  }
+}
+
+compute = function(dataset_type, idx, method){
+  get_data(dataset_type, idx) %>% 
+    funlist[[method]]()
+}
+
+compute_and_save_and_return = function(dataset_type, idx, method){
+  res = get_data(dataset_type, idx) %>% 
+    funlist[[method]]()
+  saveRDS(object = res, file = make_fname(dataset_type, idx, method))
+  return(res)
+}
+
+compute_and_save = function(dataset_type, idx, method){
+  res = get_data(dataset_type, idx) %>% 
+    funlist[[method]]()
+  saveRDS(object = res, file = make_fname(dataset_type, idx, method))
+  return()
+}
+
+get_data = function(dataset_type, idx){
+  dataset_list[[dataset_type]][[idx]]
+}
+
+fit_all_methods_on_all_the_datasets = function(dataset_list, funlist){
+  
+  dataset_list %>% 
+    names %>% 
+    lapply(FUN = function(dataset_type) expand.grid(dataset_type, 1:length(dataset_list[[dataset_type %>% as.character()]]), funlist %>% names, stringsAsFactors = F)) %>% 
+    Reduce(rbind,.)  %>% 
+    setNames(c('dataset_type', 'idx', 'method')) %>% 
+    (function(grid){mcmapply(FUN = save_if_not_present, grid$dataset_type, grid$idx, grid$method, mc.cores = detectCores()-1)})
+  
+}
+
+
+get_quantiles_for_all_methods = function(list_of_list_of_fits, reference_quantile, numit = 2500, ncores = 6){
+  list_of_list_of_fits %>% 
+    lapply(FUN = function(list_of_fits){
+      list_of_fits %>% 
+        mclapply(FUN = function(fit){
+          fit %>% 
+            thin_fit(numit = numit) %>% 
+            get_quantiles(ps = 0.05, par_ = F)}, mc.cores = ncores) %>% 
+        unlist() %>% 
+        (function(x) {c(mean(x), 
+                        quantile(x, probs = c(0.025,0.5,0.975)), 
+                        Sd(x), 
+                        mean(abs(x-reference_quantile)),
+                        mean(x-reference_quantile),
+                        reference_quantile)} ) %>% 
+        t %>% 
+        data.frame() %>% 
+        setNames(c('Mean_estimate','infCI','med','supCI', 'std', 'Mean_absolute_bias', 'Mean_bias', 'Reference')) %>% 
+        mutate(type = list_of_fits[[1]]$qmethod)
+          }) %>% 
+        Reduce(rbind,.)
+}
+
+get_quantile_CI_mean_length_for_all_methods = function(list_of_list_of_fits, reference_quantile, numit = 2500, ncores = 6, nbootsamples = 102){
+  list_of_list_of_fits %>% 
+    lapply(FUN = function(list_of_fits){
+      list_of_fits %>% 
+        mclapply(FUN = function(fit){
+          fit %>% 
+            thin_fit(numit = numit) %>% 
+            get_quantiles_and_CI(p = 0.05, par_ = F, nbootsamples = nbootsamples)}, mc.cores = ncores) %>% 
+        Reduce(rbind,.) %>% 
+        mutate(CI_length = C_sup-C_inf) %>% 
+        (function(resdf) {c(mean(resdf$HC), 
+                        quantile(resdf$HC, probs = c(0.025,0.5,0.975)), 
+                        Sd(resdf$HC), 
+                        mean(abs(resdf$HC-reference_quantile)),
+                        mean(resdf$HC-reference_quantile),
+                        reference_quantile,
+                        mean(resdf$CI_length),
+                        quantile(resdf$CI_length, probs = c(0.025,0.5,0.975)))} ) %>% 
+        t %>% 
+        data.frame() %>% 
+        setNames(c('Mean_estimate','infCI','med','supCI', 'std', 'Mean_absolute_bias', 'Mean_bias', 'Reference', 'Mean_CI_length','len_infCI','len_med','len_supCI')) %>% 
+        mutate(type = list_of_fits[[1]]$qmethod)
+          }) %>% 
+        Reduce(rbind,.)
+}
+
+format_est_CI = function(est, infCI, supCI){
+  c(est, infCI, supCI) %>% 
+    formatC(digits = 3) %>%
+    (function(x){
+      paste(x[[1]], ' [',x[[2]],';',x[[3]],']', sep = '')
+    })
+  }
+
+print_quantiles_for_all_methods = function(quantiles_for_all_methods){
+  quantiles_for_all_methods %>% 
+    mutate(Mean_estimate_and_95CI = mapply(FUN = format_est_CI, Mean_estimate, infCI, supCI)) %>% 
+    dplyr::select(c(Reference, Mean_estimate_and_95CI, Mean_bias, Mean_absolute_bias, std, type)) %>% 
+    kable(digits = 3)
+}
+
+print_quantiles_and_CI_length_for_all_methods = function(quantiles_and_CI_length){
+  quantiles_and_CI_length %>% 
+    mutate(Mean_estimate_and_95CI = mapply(FUN = format_est_CI, Mean_estimate, infCI, supCI)) %>% 
+    dplyr::select(c(Reference, Mean_estimate_and_95CI, Mean_bias, Mean_absolute_bias, std, type,Mean_CI_length)) %>% 
+    kable(digits = 3)
+}
+
+get_average_density_estimates = function(list_of_list_of_fits, xs = seq(-3, 3, length.out = 30), ncores = 6){
+  list_of_list_of_fits %>% 
+    lapply(FUN = function(list_of_fits){
+      list_of_fits %>% 
+        mclapply(FUN = function(fit){
+          fit %>% 
+            get_dens(xs = xs)}, mc.cores = ncores) %>% 
+        Reduce(cbind,.) %>% 
+        rowMeans %>%  
+        data.frame(dens = .) %>% 
+        mutate(type = list_of_fits[[1]]$qmethod, xs = xs)
+          }) %>% 
+        Reduce(rbind,.)
+}
+
+plot_average_density_estimates = function(average_density_estimates, reference = NULL){
+  
+  p = average_density_estimates %>% 
+    mutate(type = factor(type, levels = unique(type) %>% sort)) %>% 
+      ggplot(aes(x = xs, y = dens, colour = type)) +
+    ylab('Average density estimate') +
+    xlab('')
+  
+  if(is.null(reference)){
+    p + geom_line()
+  } 
+  else {
+    refdens = average_density_estimates$xs %>% 
+      data.frame(xs = ., dens = reference(.))
+    
+    p + 
+      geom_line(linetype = 2, size = 1.5) +
+      geom_line(data = refdens, aes(x = xs, y = dens), colour = 'black', size = 1.5)
+  }
+  
+}
+
+cmp_ISE_fit = function(fit, reference) {
+  
+  estimate = function(x) get_dens(fit = fit, xs = x)
+  
+  integrate(function(x) (estimate(x) - reference(x))**2,
+            lower = -Inf,
+            upper = Inf)
+}
+
+get_MISE_for_all_methods = function(list_of_list_of_fits, reference_dist, numit = 10**6, ncores = 6){
+  list_of_list_of_fits %>% 
+    lapply(FUN = function(list_of_fits){
+      list_of_fits %>% 
+        mclapply(FUN = function(fit){cmp_ISE_fit(fit %>% thin_fit(numit = numit), reference_dist)$value}, mc.cores = ncores) %>% 
+        unlist() %>% 
+        (function(x) c(mean(x), quantile(x, probs = c(0.025,0.5,0.975)), Sd(x)) ) %>% 
+        t %>% 
+        data.frame() %>% 
+        setNames(c('MISE','infCI','med','supCI', 'std')) %>% 
+        mutate(type = list_of_fits[[1]]$qmethod)
+          }) %>% 
+        Reduce(rbind,.)
+}
+
+print_RMISE_for_all_methods = function(MISE_for_all_methods){
+  MISE_for_all_methods %>% 
+    mutate(Mean_MISE_and_95CI = mapply(FUN = format_est_CI, MISE, infCI, supCI)) %>% 
+    (function(x){
+      if ('normal_kernel_mixture_ssd'%in%x$type ){
+        MISE_nkerdens = as.numeric(subset(x,type == 'normal_kernel_mixture_ssd')$MISE)
+        x %>% 
+          mutate(RMISE = MISE/MISE_nkerdens)
+      }
+        else x
+    }) %>% 
+    dplyr::select(c(RMISE, Mean_MISE_and_95CI, std, type)) %>% 
+    kable(digits = 3)
+}
+
+
+save_all_models = function(fits_for_all_methods, fname){
+  save(fits_for_all_methods, file = paste('chains_model_comparison_simulated_data/',fname,'.Rdata', sep = ''))
+}
+
+
+load_compute_or_pass = function(dataset_type, idx, method){
+  if(method%in%c('normal_ssd', 'logis_ssd', 'kde_ssd')) compute(dataset_type, idx, method)
+  else{
+    fname = make_fname(dataset_type, idx, method)
+    if(file.exists(fname)) readRDS(fname)
+    else return()
+    }
+}
+
+## A helper function that tests whether an object is either NULL _or_
+## a list of NULLs
+is.NullOb <- function(x) is.null(x) | all(sapply(x, is.null))
+## Recursively step down into list, removing all such objects
+rmNullObs <- function(x) {
+x <- Filter(Negate(is.NullOb), x)
+lapply(x, function(x) if (is.list(x)) rmNullObs(x) else x)
+}
+
+rmNull = function(list_){
+  list_[!sapply(list_, is.null)]
+}
+
+get_all_fits = function(dataset_type){
+  
+  funlist %>% 
+    names %>% 
+    # .[1:3] %>% 
+    lapply(FUN = function(fun){
+      expand.grid(dataset_type, 1:length(dataset_list[[dataset_type %>% as.character()]]), fun, stringsAsFactors = F) %>% 
+    setNames(c('dataset_type', 'idx', 'method')) %>% 
+    (function(grid){mapply(FUN = load_compute_or_pass, grid$dataset_type, grid$idx, grid$method, SIMPLIFY = F)}) %>% rmNull
+    })
+  
+}
+
+Collect_in_a_single_file = function(dataset_type){
+  res = get_all_fits(dataset_type)
+  saveRDS(object = res, file = paste('chains_model_comparison_simulated_data/',dataset_type,'.Rdata', sep = ''))
+}
+
+
+load_file = function(dataset_type){
+  readRDS(paste('chains_model_comparison_simulated_data/',dataset_type,'.Rdata', sep = ''))
+}
+
+```
+```{r}
+dataset_list = create_dataset_list()
+funlist = create_funlist(nit = 30000)
+fit_all_methods_on_all_the_datasets(dataset_list = dataset_list, funlist = funlist)
+```
+
+
+```{r, eval = F}
+
+expand.grid(c('normal', 'student', 'multimodal'), c(10,20,50,100)) %>% 
+  (function(df) mapply(FUN = paste, df$Var1,df$Var2, sep = '')) %>% 
+  lapply(Collect_in_a_single_file)
+
+```
+
+```{r}
+library(knitr)
+```
+
+##Summary graph for simulated data
+
+
+```{r}
+to_plot = list()
+
+datasets = expand.grid(c('normal', 'student', 'multimodal'), c(10,20,50,100))
+reference_densities = list('normal' = dnorm,
+                  'student' = function(x) dt(x, df = 3, ncp = -2),
+                  'multimodal' = function(x) dmixnorm(x, mus = c(-2, 5), sigmas = c(1,1), probs = c(2,4) %>% normalise_weights))
+
+reference_quantiles = list('normal' = qnorm(0.05),
+                  'student' = qt(0.05, df = 3, ncp = -2),
+                  'multimodal' = qmixnorm(0.05, mus = c(-2, 5), sigmas = c(1,1), probs = c(2,4) %>% normalise_weights))
+
+
+for( i in seq_len(nrow(datasets))){
+  print(i)
+  to_plot[[i]] = paste(datasets[i,1], datasets[i,2], sep = '') %>% 
+    load_file %>% 
+    (function(fit_list){
+      df_RMISE = fit_list %>% 
+        get_MISE_for_all_methods(reference = reference_densities[[datasets[i,1]]], numit = 2000) %>% 
+        dplyr::select(type, MISE) %>% 
+        mutate(size = datasets[i,2], data_type = datasets[i,1]) 
+      
+      df_quantile = fit_list %>% 
+        get_quantile_CI_mean_length_for_all_methods(reference_quantile = reference_quantiles[[datasets[i,1]]], 
+                                                    numit = 10000) %>% 
+        dplyr::select(Mean_absolute_bias, Mean_CI_length, type)
+      
+      left_join(df_RMISE, df_quantile)
+    })
+  
+}
+
+to_plot = to_plot %>% 
+  Reduce(rbind,.) %>%
+  gather(variable, value, MISE, Mean_absolute_bias:Mean_CI_length)
+
+```
+
+```{r}
+p = to_plot %>% 
+  subset(!grepl("truncated_normal", type)) %>% 
+  subset(!grepl("semi", type)) %>% 
+  subset(!grepl("logistic", type)) %>% 
+  mutate(data_type = stringr::str_to_title(data_type)) %>% 
+  mutate(data_type = gsub("Student", "t-Student", data_type)) %>% 
+  mutate(data_type = factor(data_type, 
+                            levels = c("Normal", "t-Student", "Multimodal"))) %>% 
+  mutate(variable = gsub("_", " ", variable)) %>% 
+  mutate(variable = gsub("Mean absolute bias", "MAE", variable)) %>% 
+  mutate(variable = gsub("Mean CI length", "MCIL", variable)) %>% 
+  mutate(variable = factor(variable, levels = c("MAE", "MISE", "MCIL"))) %>% 
+  mutate(type = factor(type, levels = c("normal_ssd",  "BNP_mixture_ssd_mu0.1_sigma1.5_uniform_Gama0.4", "normal_kernel_mixture_ssd"))) %>%
+  ggplot(aes(y = value, x = factor(size), colour = type, group = type)) +
+  geom_line(linetype = 'dashed') + 
+  geom_point(aes(shape = type)) +
+  xlab('dataset size') +
+  facet_grid(variable~data_type, scale = 'free_y') + 
+  ggthemes::theme_few() + 
+  ggthemes::scale_colour_few(name = 'Model type', labels = c("Normal", "BNP", "KDE")) +
+  ylab("") + 
+  xlab("Dataset size")
+
+
+print(p)
+
+# p %>% 
+#   clean_background
+```
+
+```{r}
+pdf('figures/graph_comparison_simulated_data_with_legend.pdf', height = 5, width = 7)
+print(p)
+dev.off()
+pdf('figures/graph_comparison_simulated_data.pdf', height = 5, width = 7)
+print(p + theme(legend.position = "none"))
+dev.off()
+```
+
+# Looking at the clustering
+
+```{r}
+source('load_rivm_db.R')
+#Selection for the JASA paper
+# big_c_list = c('122145','7733020','298000')
+# med_c_list = c('7632000','654660','91203')
+# small_c_list = c('9016459','61791262','115208')
+big_c_list = c('63252','7758987','7778509')
+med_c_list = c('56382','42615292','1420048')
+small_c_list = c('114261','10588019','2764729')
+
+ex_c_list = c(big_c_list, med_c_list, small_c_list) #%>% sapply(FUN = CAS_short_name_converter)
+# n_clust_per_c = readRDS('n_clust_per_c.Rdata')
+n_clust_per_c = readRDS('n_clust_per_c_new.Rdata)
+```
+
+```{r}
+try_to_read = function(path){
+  res = try(readRDS(path))
+  
+  if(inherits(res, 'try-error')) res = get(load(path))
+  
+  return(res)
+}
+
+clean_c_path = function(c_path){
+  c_path %>% 
+    gsub('/home/guillaume/Seafile/auto_shared/chains_rivm_clustering/','',.) %>%
+    gsub('/home/guillaume/Seafile/auto_shared/chains_rivm_clustering_new//','',.) %>%
+    gsub('/home/guillaume/Seafile/auto_shared/chains_rivm_clustering_new/','',.) %>%
+    gsub("_BNP_mixture_ssd_mu0_5_sigma1_truncated_normal_Gama0_4.Rdata","",.) %>% 
+    gsub("_BNP_mixture_ssd_mu0_1_sigma1_5_uniform_Gama0_4.Rdata","",.) 
+}
+
+get_data_species_names = function(fname){
+  fname %>% 
+    gsub('minVIs/','',.) %>% 
+    gsub('.Rdata','',.) %>% 
+    (function(x){
+      
+      cens_ = x %>% 
+                    gsub('[[:digit:]]+', '', .) %>% 
+                    (function(x) x=='c')
+      
+      get_log_dat(x %>% 
+                    gsub('([0-9]*).*', '\\1', .), 
+                  cens = cens_, names = T) %>% 
+        (function(y){
+          if(cens_) return(y$species)
+          else return(names(y))
+        })
+    }) 
+}
+
+get_data_species_names_new = function(fname){
+  fname %>% 
+    gsub('minVIs/','',.) %>% 
+    gsub('minVIs_new/','',.) %>% 
+    gsub('.Rdata','',.) %>% 
+    (function(x){
+      
+      cens_ = x %>% 
+                    gsub('[[:digit:]]+', '', .) %>% 
+                    (function(x) x=='c')
+      
+      get_log_dat(x %>% 
+                    gsub('([0-9]*).*', '\\1', .), 
+                  cens = cens_, names = T, geomean = T, filt_hickey = T) %>% 
+        (function(y){
+          if(cens_) return(y$species)
+          else return(names(y))
+        })
+    }) 
+}
+
+create_major_taxon_converter = function(){
+  convert_list = get(load('data/rivm_db.Rdata')) %>% 
+    dplyr::select(species, major) %>% 
+    unique() %>% 
+    mutate(species = as.character(species), major = as.character(major)) %>% 
+    (function(x){
+    x$major %>% 
+        setNames(x$species)
+    })
+  
+  convert_fun = function(keys){
+    sapply(keys, function(key) convert_list[[as.character(key)]])
+  }
+}
+
+convert_to_major_taxon = create_major_taxon_converter()
+
+
+create_major_to_phylum_converter = function(){
+  convert_list = read_csv("major_codes.csv") %>% 
+    dplyr::select(Major_code, `Phylum/Division`) %>% 
+    unique %>%
+    (function(x){
+     c(x$`Phylum/Division`) %>% 
+        setNames(c(x$Major_code))
+    })
+  
+  convert_fun = function(keys){
+    sapply(keys, function(key) convert_list[[as.character(key)]])
+  }
+}
+
+convert_major_to_phylum = create_major_to_phylum_converter()
+
+
+create_major_to_SSDbookGroup_converter = function(){
+  convert_list = read_csv("data/major_codes.csv") %>% 
+    dplyr::select(Major_code, SSD_book_group) %>% 
+    unique %>%
+    (function(x){
+     c(x$SSD_book_group) %>% 
+        setNames(c(x$Major_code))
+    })
+  
+  convert_fun = function(keys){
+    sapply(keys, function(key) convert_list[[as.character(key)]])
+  }
+}
+
+convert_major_to_SSDbookGroup = create_major_to_SSDbookGroup_converter()
+
+convert_species_to_phylum = function(keys){keys %>% convert_to_major_taxon() %>% convert_major_to_phylum()}
+convert_species_to_SSDbookGroup = function(keys){keys %>% convert_to_major_taxon() %>% convert_major_to_SSDbookGroup()}
+
+plot_cdf_group_and_cluster = function(c_path, species_convert_fun, title = TRUE){
+  
+  fit1 = try_to_read(c_path)
+  
+  c_name = c_path %>% 
+    clean_c_path() %>% 
+    gsub("nc","",.) %>% 
+    gsub("c","",.) %>% 
+    CAS_short_name_converter()
+  
+  fname = c_path %>% 
+    clean_c_path() %>% 
+    paste('minVIs_new/',., '.Rdata', sep = '')
+  
+  fit1.VI = readRDS(fname)
+  
+  if(is.censored(fit1$data_)){
+    loc_species_names = fit1$data_ %>% rowMeans(na.rm = TRUE)
+  }
+  else{
+    loc_species_names = fit1$data_
+  }
+  
+  curve_dat = tibble(xs = get_plotting_range(fit1$data_)) %>%
+    mutate(cdf_ = get_cdf(fit1, xs = xs)) %>% 
+    (function(df){
+      rbind(df %>% mutate(colour_scheme = "Coloured by species group"),
+            df %>% mutate(colour_scheme = "Coloured by cluster membership"))
+    })
+  
+  p = tibble(loc_species_names = loc_species_names,
+         species_nm = get_data_species_names_new(fname) %>% as.character(),
+         height_species_names = get_cdf(fit1, xs =  loc_species_names),
+         alloc = fit1.VI$cl) %>%
+    mutate(cv_nm = species_convert_fun(species_nm)) %>% 
+    (function(df){
+      rbind(df %>% mutate(colour_scheme = "Coloured by species group", colour = cv_nm),
+            df %>% mutate(colour_scheme = "Coloured by cluster membership", colour = alloc %>% as.character()))
+    }) %>% 
+    mutate(colour_scheme = factor(colour_scheme, levels = c("Coloured by species group", "Coloured by cluster membership"))) %>% 
+    ggplot(aes(x = loc_species_names, y = height_species_names, colour = factor(colour), label = cv_nm)) + 
+    geom_text() +
+    facet_grid(.~colour_scheme) + 
+    theme_few() + 
+    scale_colour_ptol(guide = FALSE) + 
+    xlab("Concentration") + 
+    ylab("Fraction affected") + 
+    geom_line(data = curve_dat %>% 
+    mutate(colour_scheme = factor(colour_scheme, levels = c("Coloured by species group", "Coloured by cluster membership"))), aes(x = xs, y = cdf_, colour = NULL, label = NULL)) 
+  
+  if(title){
+    return(p + ggtitle(c_name))
+  }
+  else{
+    p
+  }
+    
+}
+
+
+plot_cdf_group_and_cluster = function(fit, contaminant_short_name, optimal_clustering, species_convert_fun, title = TRUE){
+  
+  c_name = contaminant_short_name
+  fit$data_ = fit$data
+  
+  fit.VI = optimal_clustering
+  
+  if(is.censored(fit1$data_)){
+    loc_species_names = fit$data_ %>% rowMeans(na.rm = TRUE)
+  }
+  else{
+    loc_species_names = fit$data_
+  }
+  
+  curve_dat = tibble(xs = get_plotting_range(fit$data_)) %>%
+    mutate(cdf_ = get_cdf(fit, xs = xs)) %>% 
+    (function(df){
+      rbind(df %>% mutate(colour_scheme = "Coloured by species group"),
+            df %>% mutate(colour_scheme = "Coloured by cluster membership"))
+    })
+  
+  p = tibble(loc_species_names = loc_species_names,
+         species_nm = get_data_species_names_new(fname) %>% as.character(),
+         height_species_names = get_cdf(fit1, xs =  loc_species_names),
+         alloc = fit1.VI$cl) %>%
+    mutate(cv_nm = species_convert_fun(species_nm)) %>% 
+    (function(df){
+      rbind(df %>% mutate(colour_scheme = "Coloured by species group", colour = cv_nm),
+            df %>% mutate(colour_scheme = "Coloured by cluster membership", colour = alloc %>% as.character()))
+    }) %>% 
+    mutate(colour_scheme = factor(colour_scheme, levels = c("Coloured by species group", "Coloured by cluster membership"))) %>% 
+    ggplot(aes(x = loc_species_names, y = height_species_names, colour = factor(colour), label = cv_nm)) + 
+    geom_text() +
+    facet_grid(.~colour_scheme) + 
+    theme_few() + 
+    scale_colour_ptol(guide = FALSE) + 
+    xlab("Concentration") + 
+    ylab("Fraction affected") + 
+    geom_line(data = curve_dat %>% 
+    mutate(colour_scheme = factor(colour_scheme, levels = c("Coloured by species group", "Coloured by cluster membership"))), aes(x = xs, y = cdf_, colour = NULL, label = NULL)) 
+  
+  if(title){
+    return(p + ggtitle(c_name))
+  }
+  else{
+    p
+  }
+    
+}
+```
+
+```{r}
+carbaryl_data = "Carbaryl" %>% 
+     CAS_short_name_converter() %>% 
+  get_log_dat(cens = T, names = T)
+
+carbaryl_fit = carbaryl_data %>% 
+  (function(x) MixNRMI2cens(xleft = x$left, x$right, 
+                            adaptive = T, 
+                            distr.pz0 = "uniform",
+                            mu.pz0 = 0.1, 
+                            sigma.pz0 = 1.5, 
+                            extras = TRUE))
+
+carbaryl_fit_optimal_clustering = carbaryl_fit %>% 
+  compute_optimal_clustering() %>% 
+  tibble(cluster_index = ., ) %>% 
+  bind_cols(carbaryl_data)
+```
+
+
+```{r}
+p = "Carbaryl" %>% 
+  CAS_short_name_converter() %>% 
+  (function(x){
+    n_clust_per_c %>% 
+      subset(grepl(x, c)) %>% 
+      subset(!grepl('nc_', c))
+    }) %>% 
+  .$c %>% 
+  as.character %>% 
+  plot_cdf_group_and_cluster(convert_species_to_SSDbookGroup, title = F)
+print(p)
+pdf("../example_clustering_post_analysis.pdf")
+print(p)
+dev.off()
+```
+
