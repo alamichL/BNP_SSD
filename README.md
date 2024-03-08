@@ -2,6 +2,11 @@
 This repository presents the code used in the paper: **Species Sensitivity Distribution revisited: a Bayesian nonparametric approach**, *Louise Alamichel, Julyan Arbel, Guillaume Kon Kam King
 and Igor Prünster*. 
 
+# BNP-SSD Shiny application
+A Shiny application named BNP-SSD is available at XXX. 
+This application, inspired by the `shinyssdtools` Shiny application, is based on the functions of the package `BNPdensity`. 
+The BNP model described in the paper is adjusted on datasets either censored or not. The fitted density is plotted as well as some goodness of fit plots. Finally, the induced optimal clustering is computed and plotted.
+
 ## Abstract
 We present a novel approach to ecological risk assessment by reexamining the Species Sensitivity Distribution (SSD) method within a Bayesian nonparametric (BNP) framework. Widely mandated by environmental regulatory bodies globally, SSD has faced criticism due to its historical reliance on parametric assumptions when modeling species variability. By adopting nonparametric mixture models, we address this limitation, establishing a more statistically robust foundation for SSD. 
 
