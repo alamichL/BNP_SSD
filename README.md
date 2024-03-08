@@ -4,7 +4,7 @@ and Igor Prünster*.
 
 ## BNP-SSD Shiny application
 A Shiny application named BNP-SSD is available at XXX. 
-This application, inspired by the [https://bcgov.github.io/shinyssdtools/](shinyssdtools) [https://bcgov-env.shinyapps.io/ssdtools/](Shiny application), is based on the functions of the package `BNPdensity`. 
+This application, inspired by the [shinyssdtools](https://bcgov.github.io/shinyssdtools/) [Shiny application](https://bcgov-env.shinyapps.io/ssdtools/), is based on the functions of the package `BNPdensity`. 
 The BNP model described in the paper is adjusted on datasets either censored or not. The fitted density is plotted as well as some goodness of fit plots. Finally, the induced optimal clustering is computed and plotted.
 
 ## Abstract
