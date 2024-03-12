@@ -1,0 +1,30 @@
+Major_code,example species,Long name,Kingdom,Phylum/Division,subPhylum,Superclass,Class,Order,SSD_book_group
+AG,Petromyzon marinus,Agnatha,Animalia,Chordata,Vertebra,Agnatha,,,Fish
+AL,Selenastrum capricornutum,Algae,Plantae,Chlorophyta,,,,,Algae
+AM,Rana temporaria,Amphibia ,Animalia,Chordata,,, Amphibia,,Amphibia
+AN,Tubifex tubifex,Annelida,Animalia,Annelida,,,Clitellata,,Annelida
+AR,Acarina sp,Arachnida,Animalia,Arthropoda,,,Arachnida,,Insects
+AS,Ciona intestinalis,Ascidiacea , Animalia,Chordata,Tunicata,,Ascidiacea,,
+BA,,Bacteria,Bacteria,Proteobacteria,,,,,
+BR,Lophopodella carteri,Bryozoa , Animalia,Bryozoa,,,,,
+BY,Scapania undulata,Plantae,Plantae,Marchantiophyta ,,,Hepatopsida,Jungermanniales ,Water plants
+CA,Sagitta sp, Chaetognatha,Animalia,Chaetognatha,,,,,
+CC,Branchiostoma caribaeum,Cephalochordata,Animalia,Chordata,Cephalochordata,,,,
+CH,Raja eglanteria,Chondrichthyes,Animalia,Chordata,,,Chondrichthyes,,Fish
+CN,Hydra vulgaris,Cnidaria,Animalia,Cnidaria,,, Hydrozoa,,
+CT,Mnemiopsis mccradyi,Ctenophora,Animalia,Ctenophora,,,Tentaculata,,
+CR,Daphnia magna,Crustaceans,Animalia,Arthropoda, Crustacea,, Branchiopoda,,Crustacea
+CY,Anabaena sp,Cyanobacteria, Bacteria,Cyanobacteria,,,Hormogoneae,,Cyanobacteria
+EC,Asterias forbesi,Echinodermata,Animalia,Echinodermata,,,Asteroidea,,
+GS,Lepidodermella squamatum,Gastrotricha,Animalia,Gastrotricha,,,,,
+IN,Hydropsyche betteni,Insecta,Animalia,Arthropoda,Hexapoda,,Insecta,,Insects
+LE,Azolla pinnata,,Plantae,Polypodiophyta ,,,Filicopsida ,,Water plants
+LI,Lemna gibba,Liliopsida ,Plantae,Magnoliophyta,,,Liliopsida ,Alismatales,Water plants
+MA,Senna tora,Magnoliopsida ,Plantae,Magnoliophyta,,,Magnoliopsida ,Fabales,
+MI,"Aquatic community, Plankton, mixed ?",,,,,,,,
+ML,Elimia livescens,Mollusca,Animalia,Mollusca,,,Gastropoda,,Mollusca
+NM,Caenorhabditis elegans,Nematoda,Animalia,Nematoda,,,Chromadorea,,
+OS,Brachydanio rerio,Osteichthyes,Animalia,Chordata,, Osteichthyes,Actinopterygii,,Fish
+PL,Dugesia tigrina,Planariidae ,Animalia,Platyhelminthes,,,Turbellaria ,,
+PR,Tetrahymena thermophila,Protozoa,Eukaryota,Ciliophora,,,Oligohymenophorea,,Protozoa
+RO,Brachionus rubens,Rotifera,Animalia,Rotifera,,,Monogononta,,

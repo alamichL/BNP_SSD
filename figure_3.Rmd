@@ -1,0 +1,243 @@
+---
+title: "Figures for the JRSS article"
+author: "Guillaume"
+output: 
+  html_document:
+    toc: true
+    theme: united
+    number_sections: true
+---
+
+
+```{r,include=FALSE}
+library(knitr)
+opts_chunk$set(
+  concordance = TRUE,
+  warning = FALSE,
+  cache = T,
+  message = FALSE,
+  echo = FALSE
+)
+
+library(tidyverse)
+library(parallel)
+library(fitdistrplus)
+library(gridExtra)
+library(BNPdensity)
+library(survival)
+library(ggthemes)
+library(sn)
+library(forcats)
+```
+
+
+#Analysis on real data
+
+
+```{r}
+source('scripts/load_rivm_db.R')
+```
+
+```{r, cache=FALSE}
+# source('scripts/SSD_fit_functions.R')
+source('scripts/fit_analysis_functions.R')
+```
+
+# Looking at the clustering
+
+```{r}
+
+get_data_species_names = function(fname){
+  fname %>% 
+    gsub('minVIs/','',.) %>% 
+    gsub('.Rdata','',.) %>% 
+    (function(x){
+      
+      cens_ = x %>% 
+                    gsub('[[:digit:]]+', '', .) %>% 
+                    (function(x) x=='c')
+      
+      get_log_dat(x %>% 
+                    gsub('([0-9]*).*', '\\1', .), 
+                  cens = cens_, names = T) %>% 
+        (function(y){
+          if(cens_) return(y$species)
+          else return(names(y))
+        })
+    }) 
+}
+
+get_data_species_names_new = function(fname){
+  fname %>% 
+    gsub('minVIs/','',.) %>% 
+    gsub('minVIs_new/','',.) %>% 
+    gsub('.Rdata','',.) %>% 
+    (function(x){
+      
+      cens_ = x %>% 
+                    gsub('[[:digit:]]+', '', .) %>% 
+                    (function(x) x=='c')
+      
+      get_log_dat(x %>% 
+                    gsub('([0-9]*).*', '\\1', .), 
+                  cens = cens_, names = T, geomean = T, filt_hickey = T) %>% 
+        (function(y){
+          if(cens_) return(y$species)
+          else return(names(y))
+        })
+    }) 
+}
+
+create_major_taxon_converter = function(){
+  convert_list = get(load('data/rivm_db.Rdata')) %>% 
+    dplyr::select(species, major) %>% 
+    unique() %>% 
+    mutate(species = as.character(species), major = as.character(major)) %>% 
+    (function(x){
+    x$major %>% 
+        setNames(x$species)
+    })
+  
+  convert_fun = function(keys){
+    sapply(keys, function(key) convert_list[[as.character(key)]])
+  }
+}
+
+convert_to_major_taxon = create_major_taxon_converter()
+
+
+create_major_to_phylum_converter = function(){
+  convert_list = read_csv("data/major_codes.csv") %>% 
+    dplyr::select(Major_code, `Phylum/Division`) %>% 
+    unique %>%
+    (function(x){
+     c(x$`Phylum/Division`) %>% 
+        setNames(c(x$Major_code))
+    })
+  
+  convert_fun = function(keys){
+    sapply(keys, function(key) convert_list[[as.character(key)]])
+  }
+}
+
+convert_major_to_phylum = create_major_to_phylum_converter()
+
+
+create_major_to_SSDbookGroup_converter = function(){
+  convert_list = read_csv("data/major_codes.csv") %>% 
+    dplyr::select(Major_code, SSD_book_group) %>% 
+    unique %>%
+    (function(x){
+     c(x$SSD_book_group) %>% 
+        setNames(c(x$Major_code))
+    })
+  
+  convert_fun = function(keys){
+    sapply(keys, function(key) convert_list[[as.character(key)]])
+  }
+}
+
+convert_major_to_SSDbookGroup = create_major_to_SSDbookGroup_converter()
+
+convert_species_to_phylum = function(keys){keys %>% convert_to_major_taxon() %>% convert_major_to_phylum()}
+convert_species_to_SSDbookGroup = function(keys){keys %>% convert_to_major_taxon() %>% convert_major_to_SSDbookGroup()}
+
+plot_cdf_group_and_cluster = function(fit, contaminant_short_name, optimal_clustering, species_convert_fun, title = TRUE){
+  
+  c_name = contaminant_short_name
+  fit$data_ = fit$data
+  
+  fit.VI = optimal_clustering
+  
+  fit$qmethod = "BNP_mixture_ssd_mu0.1_sigma1.5_uniform_Gama0.4"
+  fit$mu = fit$means
+  fit$sigmas = fit$sigma
+  fit$lambda = fit$weights
+  
+  if(is.censored(fit$data_)){
+    loc_species_names = fit$data_ %>% rowMeans(na.rm = TRUE)
+  }
+  else{
+    loc_species_names = fit$data_
+  }
+  
+  curve_dat = tibble(xs = get_plotting_range(fit$data_)) %>%
+    mutate(cdf_ = get_cdf(fit, xs = xs)) %>% 
+    (function(df){
+      rbind(df %>% mutate(colour_scheme = "Coloured by species group"),
+            df %>% mutate(colour_scheme = "Coloured by cluster membership"))
+    })
+  
+  p = tibble(loc_species_names = loc_species_names,
+         species_nm = fit.VI$species,
+         height_species_names = get_cdf(fit, xs =  loc_species_names),
+         alloc = fit.VI$cluster_index) %>%
+    mutate(cv_nm = species_convert_fun(species_nm)) %>% 
+    (function(df){
+      rbind(df %>% mutate(colour_scheme = "Coloured by species group", colour = cv_nm),
+            df %>% mutate(colour_scheme = "Coloured by cluster membership", colour = alloc %>% as.character()))
+    }) %>% 
+    mutate(colour_scheme = factor(colour_scheme, levels = c("Coloured by species group", "Coloured by cluster membership"))) %>% 
+    ggplot(aes(x = loc_species_names, y = height_species_names, colour = factor(colour), label = cv_nm)) + 
+    geom_text() +
+    facet_grid(.~colour_scheme) + 
+    ggthemes::theme_few() + 
+    ggthemes::scale_colour_ptol(guide = "none") + 
+    xlab("Concentration") + 
+    ylab("Fraction affected") + 
+    geom_line(data = curve_dat %>% 
+    mutate(colour_scheme = factor(colour_scheme, levels = c("Coloured by species group", "Coloured by cluster membership"))), aes(x = xs, y = cdf_, colour = NULL, label = NULL)) 
+  
+  if(title){
+    return(p + ggtitle(c_name))
+  }
+  else{
+    p
+  }
+    
+}
+```
+
+```{r}
+set.seed(0)
+carbaryl_data_nc = "Carbaryl" %>% 
+     CAS_short_name_converter() %>% 
+  get_log_dat(cens = F, names = T, centred_scaled = T, geomean = T, filt_hickey = T) %>% 
+  tibble(data = ., species = names(.))
+  
+carbaryl_fit_nc = carbaryl_data_nc %>%
+  (function(x) MixNRMI2cens(xleft = x$data, xright = x$data, 
+                            adaptive = T,
+                            distr.pz0 = "uniform",
+                            mu.pz0 = 0.1,
+                            sigma.pz0 = 1.5,
+                            extras = TRUE,
+                            Nit = 15000)
+   )
+
+carbaryl_fit_optimal_clustering_nc = carbaryl_fit_nc %>% 
+  compute_optimal_clustering() %>% 
+  tibble(cluster_index = .) %>% 
+  bind_cols(carbaryl_data_nc)
+```
+
+```{r}
+plot_cdf_group_and_cluster(fit = carbaryl_fit_nc, 
+                           contaminant_short_name = "Carbaryl", 
+                           optimal_clustering = carbaryl_fit_optimal_clustering_nc, 
+                           species_convert_fun = convert_species_to_SSDbookGroup, 
+                           title = F)
+```
+
+```{r}
+p = plot_cdf_group_and_cluster(fit = carbaryl_fit_nc, 
+                           contaminant_short_name = "Carbaryl", 
+                           optimal_clustering = carbaryl_fit_optimal_clustering_nc, 
+                           species_convert_fun = convert_species_to_SSDbookGroup, 
+                           title = F)
+print(p)
+pdf("figures/example_clustering_post_analysis.pdf", width = 8, height = 4)
+print(p)
+dev.off()
+```
+
