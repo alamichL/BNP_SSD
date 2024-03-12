@@ -51,11 +51,8 @@ make_fname = function(dataset_type, idx, method){
 
 create_funlist = function(nit){
   list('normal_ssd' = fit_normal_ssd_on_log_data, 
-       # 'logis_ssd' = fit_logis_ssd_on_log_data,
        'kde_ssd' = fit_kernel_mixture_ssd_on_log_data,
        'BNP_mixture_uniform_prior' = function(x) fit_BNP_mixture_ssd_on_log_data_uniform(ddat = x, mu.pz0 = 0.1, sigma.pz0 = 1.5, Nit = nit)#,       
-       # 'BNP_mixture_truncated_normal_prior' = function(x) fit_BNP_mixture_ssd_on_log_data_truncated_normal(ddat = x, mu.pz0 = 0.5, sigma.pz0 = 1, Nit = nit),
-       # 'semi_BNP_mixture_gamma_prior' = function(x) fit_semi_BNP_mixture_ssd_on_log_data(ddat = x, Nit = nit)
        )
 }
 
@@ -395,7 +392,7 @@ fit_all_methods_on_all_the_datasets(dataset_list = dataset_list, funlist = funli
 
 
 ```{r, eval = F}
-
+#This is a post-processing of the result
 expand.grid(c('normal', 'student', 'multimodal'), c(10,20,50,100)) %>% 
   (function(df) mapply(FUN = paste, df$Var1,df$Var2, sep = '')) %>% 
   lapply(Collect_in_a_single_file)
