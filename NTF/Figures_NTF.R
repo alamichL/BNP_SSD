@@ -4,7 +4,7 @@ library(Ckmeans.1d.dp)
 library(fields)
 library(ggthemes)
 library(NMF)
-source("~/Documents/Github/BNP_SSD/NTF/helper_functions.R")
+source("~/Documents/Github/BNP_SSD/NTF/scripts/helper_functions.R")
 library(nnTensor)
 library(multiway)
 library(RColorBrewer)
@@ -57,7 +57,7 @@ X_na = tensor_species_NA1
 print(paste0("With ", dim(X_na)[2], " species and ", dim(X_na)[3], " contaminants."))
 print(paste0("With ",round(as.numeric(table(is.na(X_na))['TRUE'])/prod(dim(X_na))*100,2), " % of NA in the data."))
 
-source("~/Documents/Github/BNP_SSD/NTF/gathering_function.R")
+source("~/Documents/Github/BNP_SSD/NTF/scripts/gathering_function.R")
 pdf(paste0(fig_path, "species_data.pdf"), width = 10, height= 5)
 repart_species <- plot_species_repart()
 dev.off()
@@ -67,7 +67,7 @@ dev.off()
 
 
 ### Plot cross_V ###
-crossV <- readRDS("~/Documents/Github/BNP_SSD/NTF/save/crossV_data.rds")
+crossV <- readRDS("~/Documents/Github/BNP_SSD/NTF/saves/crossV_data.rds")
 pdf(paste0(fig_path, "cross_validation_figure.pdf"), width = 12, height= 6)
 cross_validation_plot_label(crossV, 47, 5)
 dev.off()
