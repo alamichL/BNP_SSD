@@ -1,6 +1,6 @@
 library(tidyverse)
 library(ggthemes)
-source("~/Documents/Github/BNP_SSD/NTF/helper_functions.R")
+source("~/Documents/Github/BNP_SSD/NTF/scripts/helper_functions.R")
 library(multiway)
 library(patchwork)
 library(foreach)
@@ -41,4 +41,4 @@ X_na = tensor_species_NA1#[,,-which(V==0)]
 # cross validation
 cross <- cross_validation(X_na, X_na, p=0.1, rank=c(seq(1,29, by = 2), 30:50), save=T)
 
-saveRDS(cross,file=paste0("~/Documents/Github/BNP_SSD/NTF/save/crossV_data.rds"))
+saveRDS(cross,file=paste0("~/Documents/Github/BNP_SSD/NTF/saves/crossV_data.rds"))
