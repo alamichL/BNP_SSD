@@ -1,6 +1,5 @@
 ---
 title: "Figures for the JRSS article"
-author: "Guillaume"
 output: 
   html_document:
     toc: true
