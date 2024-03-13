@@ -56,7 +56,7 @@ plot_kmeans_decomposition <- function(tensor_factor, select = NULL, unsep = NULL
     scale_fill_ptol(labels = c('out', 'in'), name = 'Clustered')
 }
 
-source("~/Documents/Github/BNP_SSD/NTF/create_species_association_tensor.R")
+source("~/Documents/Github/BNP_SSD/NTF/scripts/create_species_association_tensor.R")
 get_column = function(column){
   get(load('rivm_db.Rdata')) %>% 
     .[,column] %>% 
