@@ -1,0 +1,13 @@
+"0","library(knitr)"
+"0","opts_chunk$set("
+"0","  concordance = TRUE,"
+"0","  warning = FALSE,"
+"0","  cache = T,"
+"0","  message = FALSE,"
+"0","  echo = FALSE"
+"0",")"
+"0",""
+"0","library(tidyverse)"
+"2","Erreur dans library(tidyverse) : 
+  aucun package nommé ‘tidyverse’ n'est trouvé
+"

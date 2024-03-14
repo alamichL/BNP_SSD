@@ -1,0 +1,756 @@
+app_server <- function(input, output, session) {
+  ########### Reactives --------------------
+  # --- upload data
+  trans <- reactive({
+    names
+  })
+  
+  tr <- function(id, trans) {
+    trans$name[trans$id == id]
+  }
+  
+  # --- upload data
+  upload.values <- reactiveValues(
+    upload_state = NULL
+  )
+  
+  #  read/create handson table
+  hot.values <- reactiveValues()
+  hot_data <- reactive({
+    if (!is.null(input$hot)) {
+      DF <- rhandsontable::hot_to_r(input$hot)
+      DF <- dplyr::mutate_if(DF, is.factor, as.character)
+    } else {
+      if (is.null(hot.values[["DF"]])) {
+        DF <- data.frame(
+          Conc_left = rep(NA_real_, 10),
+          Conc_right = rep(NA_real_, 10),
+          Species = rep(NA_character_, 10),
+          Group = rep(NA_character_, 10)
+        )
+      } else {
+        DF <- hot.values[["DF"]]
+      }
+    }
+    hot.values[["DF"]] <- DF
+    DF
+  })
+  
+  # read whichever dataset method user chooses
+  read_data <- reactive({
+    req(upload.values$upload_state)
+    if (upload.values$upload_state == "upload") {
+      data <- input$uploadData
+      if (!grepl(".csv", data$name, fixed = TRUE)) {
+        Sys.sleep(1)
+        return(p("We're not sure what to do with that file type. Please upload a csv."))
+      }
+      return(readr::read_csv(data$datapath))
+    } else if (upload.values$upload_state == "hot") {
+      return(hot_data())
+    }
+  })
+  
+  clean_data <- reactive({
+    data <- read_data()
+    if (length(data)) {
+      # remove any column names like X1, X2 (blank headers from excel/numbers)
+      data[, colnames(data) %in% paste0("X", 1:200)] <- NULL
+      # remove any rows with all NA
+      data <- data[!(rowSums(is.na(data) | data == "") == ncol(data)), ]
+    }
+    data
+  })
+  
+  # deal with unacceptable column names
+  names_data <- reactive({
+    data <- clean_data()
+    names(data) %>% make.names
+    data
+  })
+  
+  prep_data <- reactive({
+    req(input$is_censor)
+    req(input$selectSpecies)
+    req(check_fit() == "")
+    
+    data <- names_data()
+    is.censored <- input$is_censor == "Censored"
+    is.sp <- input$selectSpecies != "None"
+    sp <- NULL
+    if(is.sp)
+      sp <- input$selectSpecies %>% make.names()
+    if(is.censored){
+      conc_u <- input$selectConc_u %>% make.names()
+      conc_l <- input$selectConc_l %>% make.names()
+      dat_prep <- prepare_data(data, is.cens=is.censored, is.log=input$log, is.center=input$center, 
+                           conc_l=conc_l, conc_u=conc_u, is.sp=is.sp, sp_name=sp)
+    }else{
+      conc <- input$selectConc %>% make.names()
+      dat_prep <- prepare_data(data, is.cens=is.censored, is.log=input$log, is.center=input$center, 
+                           conc_l=conc, is.sp=is.sp, sp_name=sp)
+    }
+    dat_prep
+  })
+  
+  # --- Checks and hints for solving problems
+  check_fit <- reactive({
+    req(input$is_censor)
+    is.censored <- input$is_censor == "Censored"
+    if(is.censored){
+      conc_l <- input$selectConc_l %>% make.names()
+      conc_u <- input$selectConc_u %>% make.names()
+      data <- clean_data()
+      if (length(data[[conc_l]]) == 0L || length(data[[conc_u]]) == 0L) {
+        return(tr("ui_hintdata", trans()))
+      }
+      if (!is.numeric(data[[conc_l]]) && !is.numeric(data[[conc_u]])) {
+        return(tr("ui_hintnum", trans()))
+      }
+      if (all(is.na(data[[conc_u]]) == is.na(data[[conc_l]]))) {
+        return(tr("ui_hintmiss", trans()))
+      }
+      if (!input$log && (any(data[[conc_l]] <= 0, na.rm=T) || any(data[[conc_u]] <= 0, na.rm=T))) {
+        return(tr("ui_hintpos", trans()))
+      }
+      if (any(is.infinite(data[[conc_l]])) && any(is.infinite(data[[conc_u]]))) {
+        return(tr("ui_hintfin", trans()))
+      }
+      if (zero_range(data[[conc_l]]) || zero_range(data[[conc_u]])) {
+        return(tr("ui_hintident", trans()))
+      }
+      if (length(data[[conc_l]]) < 6 || length(data[[conc_u]]) < 6) {
+        return(tr("ui_hint6", trans()))
+      }
+      if (length(data[[conc_l]]) != length(data[[conc_u]])) {
+        return(tr("ui_hintequal", trans()))
+      }
+      x_r <- replace(data[[conc_u]], which(is.na(data[[conc_u]])), Inf)
+      x_l <- replace(data[[conc_l]], which(is.na(data[[conc_l]])), -Inf)
+      if (!all(x_l <= x_r)) {
+        return(tr("ui_hintsup", trans()))
+      }
+    }else{
+      conc <- input$selectConc
+      data <- clean_data()
+      
+      if (length(data[[conc]]) == 0L) {
+        return(tr("ui_hintdata", trans()))
+      }
+      if (!is.numeric(data[[conc]])) {
+        return(tr("ui_hintnum", trans()))
+      }
+      if (any(is.na(data[[conc]]))) {
+        return(tr("ui_hintmiss", trans()))
+      }
+      if (!input$log && any(data[[conc]] <= 0)) {
+        return(tr("ui_hintpos", trans()))
+      }
+      if (any(is.infinite(data[[conc]]))) {
+        return(tr("ui_hintfin", trans()))
+      }
+      if (zero_range(data[[conc]])) {
+        return(tr("ui_hintident", trans()))
+      }
+      if (length(data[[conc]]) < 6) {
+        return(tr("ui_hint6", trans()))
+      }
+    }
+    ""
+  })
+  
+  output$checkfit <- reactive({
+    check_fit() != ""
+  })
+  outputOptions(output, "checkfit", suspendWhenHidden = FALSE)
+  
+  
+  check_cluster <- reactive({
+    data <- clean_data()
+    if ("Concentration" %in% names(data) && length(data[["Concentration"]]) == 0L) {
+      return(tr("ui_hintdata", trans()))
+    }
+    if (is.null(input$selectConc_u) || is.null(input$selectConc_l)) {
+      return(tr("ui_hintclust", trans()))
+    }
+    if (check_fit() != "") {
+      return(tr("ui_hintfit", trans()))
+    }
+    ""
+  })
+  
+  check_pred <- reactive({
+    data <- clean_data()
+    if ("Concentration" %in% names(data) && length(data[["Concentration"]]) == 0L) {
+      return(tr("ui_hintdata", trans()))
+    }
+    if (is.null(input$selectConc_u) || is.null(input$selectConc_l)) {
+      return(tr("ui_hintpred", trans()))
+    }
+    if (check_fit() != "") {
+      return(tr("ui_hintfit", trans()))
+    }
+    ""
+  })
+  
+  output$checkclust <- reactive({
+    check_cluster() != ""
+  })
+  outputOptions(output, "checkclust", suspendWhenHidden = FALSE)
+  ####
+  
+  output$hintFi <- renderText(hint(check_fit()))
+  output$hintCl <- renderText(hint(check_cluster()))
+  output$hintPred <- renderText(hint(check_pred()))
+  
+  # --- render column choices
+  column_names <- reactive({
+    names(clean_data())
+  })
+  
+  guess_conc <- reactive({
+    name <- column_names()
+    name[grepl("conc", name %>% tolower())][1]
+  })
+  
+  guess_spp <- reactive({
+    name <- column_names()
+    name[grepl("sp", name %>% tolower())][1]
+  })
+  
+  # --- get values
+  get_width <- reactive({
+    ifelse(input$selectWidth == 0, 1, input$selectWidth)
+  })
+  
+  get_width2 <- reactive({
+    ifelse(input$selectWidth2 == 0, 1, input$selectWidth2)
+  })
+  
+  get_height <- reactive({
+    ifelse(input$selectHeight == 0, 1, input$selectHeight)
+  })
+  
+  get_height2 <- reactive({
+    ifelse(input$selectHeight2 == 0, 1, input$selectHeight2)
+  })
+  
+  get_dpi <- reactive({
+    if (input$selectDpi > 3000) {
+      return(3000)
+    }
+    if (input$selectDpi == 0) {
+      return(1)
+    }
+    input$selectDpi
+  })
+  
+  get_dpi2 <- reactive({
+    if (input$selectDpi2 > 3000) {
+      return(3000)
+    }
+    if (input$selectDpi2 == 0) {
+      return(1)
+    }
+    input$selectDpi2
+  })
+  
+  # --- fit distributions
+  fit_dist <- eventReactive(input$ui_makeFig, {
+    req(input$is_censor)
+    req(input$selectNit)
+    req(check_fit() == "")
+    
+    Nit <- as.integer(gsub("(,|\\s)", "", input$selectNit))
+    prep_dat <- prep_data()
+    data <- prep_dat$data
+    is.censored <- input$is_censor == "Censored"
+    
+    if(is.censored){
+      conc_u <- input$selectConc_u %>% make.names()
+      conc_l <- input$selectConc_l %>% make.names()
+      dat <- data.frame(left=data[[conc_l]], right=data[[conc_u]])
+    }else{
+      conc <- input$selectConc %>% make.names()
+      dat <- data.frame(left=data[[conc]], right=data[[conc]])
+    }
+    withProgress(message = 'Fitting the model', value = 0, {
+      x <- try(BNPdensity::MixNRMI2cens(dat$left,
+                                        dat$right,
+                                        probs = c(0.025, 0.975),
+                                        Alpha = 1,
+                                        Kappa = 0.4,
+                                        Gama = 0.5,
+                                        distr.k = "normal",
+                                        distr.py0 = "normal",
+                                        distr.pz0 = "unif",
+                                        mu.pz0 = 0.1,
+                                        sigma.pz0 = 1.5,
+                                        delta_S = 4,
+                                        kappa = 2,
+                                        delta_U = 2,
+                                        Meps = 0.01,
+                                        Nx = 150,
+                                        Nit = Nit,
+                                        Pbi = 0.1,
+                                        epsilon = NULL,
+                                        printtime = TRUE,
+                                        extras = TRUE,
+                                        adaptive = FALSE
+      ), silent = TRUE)
+      if (inherits(x, "try-error")) {
+        x <- NULL
+      }
+    })
+    x
+  })
+  
+  plot_dist <- eventReactive(input$ui_makeFig, {
+    x <- fit_dist()
+    prep_dat <- prep_data()
+    plot_distributions(x, prep_dat, text_size = input$size2, is.cens = (input$is_censor == "Censored"))
+  })
+  
+  plot_cpo <- eventReactive(input$ui_makeFig, {
+    x <- fit_dist()
+    boxplot_cpo(x)
+  })
+  
+  gof_plot <- eventReactive(input$ui_makeFig, {
+    x <- fit_dist()
+    withProgress(message = 'GOF plot', value = 0, {
+      gof<- BNPdensity::GOFplots(x)})
+    gof
+  })
+  
+  # Compute the HC_Q
+  get_HCQ <- reactive({
+    req(input$selectQ)
+    Q <- input$selectQ/100
+    fit <- fit_dist()
+    withProgress(message = paste0('Estimating HC',input$selectQ), value = 0, {
+      q <- get_quantile(fit, Q)
+    })
+    q
+  })
+  
+  get_HCQ_mean_IC <- reactive({
+    prep_dat <- prep_data()
+    quant <- get_HCQ()
+    q <- inv_centlog(quant, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log)
+    n <- length(q)
+    res <- data.frame(mean=mean(q), sd=sd(q), 
+                inf=mean(q)-qnorm(0.025)*sd(q)/sqrt(n),
+                sup=mean(q)+qnorm(0.025)*sd(q)/sqrt(n))
+    
+    res
+  })
+  
+  plot_HCQ <- reactive({
+    req(input$selectQ)
+    Q <- input$selectQ/100
+    fit <- fit_dist()
+    q <- get_HCQ()
+    withProgress(message = 'CDF plot', value = 0, {
+      plot_CDF_percentil(fit, q, Q)
+    })
+  })
+  
+  print_HCQ <- reactive({
+    Q <- input$selectQ
+    res <- get_HCQ_mean_IC()
+    expr <- paste0("The average estimation of HC", Q," is ",round(res$mean,2)," for the original data.")
+    expr
+  })
+  
+  # Compute and plot the optimal clustering
+  clust_opt <- reactive({
+    fit <- fit_dist()
+    clust <- BNPdensity::compute_optimal_clustering(fit, loss_type = "VI")
+    clust
+  })
+  
+  plot_clust <- reactive({
+    req(input$selectGroup)
+    prep_dat <- prep_data()
+    fit <- fit_dist()
+    clust <- clust_opt()
+    
+    if(input$selectGroup=="None")
+      BNPdensity:::plot_clustering_and_CDF(fit, clust)
+    else{
+      group <- input$selectGroup %>% make.names()
+      BNPdensity:::plot_clustering_and_CDF(fit, clust, label_vector = prep_dat$data[[group]])
+    }
+  })
+  
+  table_clust <- reactive({
+    req(input$selectGroup)
+    clust <- clust_opt()
+    prep_dat <- prep_data()
+    if(input$selectGroup=="None")
+      clust_table <- data.frame(table(clust))
+    else{
+      group <- input$selectGroup %>% make.names()
+      names(clust) <- prep_dat$data[[group]]
+      clust_table <- data.frame(clust, names(clust))
+    }
+    clust_table
+  })
+  
+  
+  ########### Outputs --------------------
+  # --- datasets
+  output$hot <- rhandsontable::renderRHandsontable({
+    x <- hot_data()
+    if (!is.null(x)) {
+      rhandsontable::rhandsontable(x, width = 600, useTypes = FALSE)
+    }
+  })
+  
+  output$ui_viewupload <- renderUI({
+    wellPanel(DT::DTOutput("viewUpload"),
+              style = "overflow-x:scroll; max-height: 600px; max-width: 640px"
+    )
+  })
+  
+  output$viewUpload <- DT::renderDataTable({
+    DT::datatable(read_data(), options = dtopt())
+  })
+  
+  dtopt <- reactive({
+    url <- paste0("//cdn.datatables.net/plug-ins/1.10.11/i18n/english.json")
+    list(
+      language = list(url = url),
+      pageLength = 10
+    )
+  })
+  
+  output$ui_2log <- renderUI({
+    checkboxInput("log",
+                  label = tr("ui_2log", trans()),
+                  value = FALSE
+    )
+  })
+  
+  output$ui_2center <- renderUI({
+    checkboxInput("center",
+                  label = tr("ui_2center", trans()),
+                  value = FALSE
+    )
+  })
+  
+  # --- render fit results ----
+  output$distPlot1 <- renderPlot({
+    waiter::waiter_show(id = "distPlot1", html = waiter::spin_2(), color = "white", hide_on_render = TRUE)
+    plot_dist()
+  })
+  
+  output$cpoPlot1 <- renderPlot({
+    waiter::waiter_show(id = "cpoPlot1", html = waiter::spin_2(), color = "white", hide_on_render = TRUE)
+    plot_cpo()
+  })
+  
+  output$GofPlot <- renderPlot({
+    waiter::waiter_show(id = "GofPlot", html = waiter::spin_2(), color = "white", hide_on_render = TRUE)
+    gof_plot()
+  })
+  
+  output$QQPlot <- renderPlot({
+    waiter::waiter_show(id = "QQPlot", html = waiter::spin_2(), color = "white", hide_on_render = TRUE)
+    plot_HCQ()
+  })
+  
+  output$QQTable <- DT::renderDataTable({
+    DT::datatable(get_HCQ_mean_IC(), options = list(dom = 't'))
+  })
+  
+  output$ClustPlot <- renderPlot({
+    waiter::waiter_show(id = "ClustPlot", html = waiter::spin_2(), color = "white", hide_on_render = TRUE)
+    plot_clust()
+  })
+  
+  output$clustTable <- DT::renderDataTable({
+    DT::datatable(table_clust(), options = dtopt())
+  })
+  
+  # --- render UI ----
+  shinyjs::onclick("linkFormatPredict", shinyjs::toggle("divFormatPredict", anim = TRUE, animType = "slide", time = 0.2))
+  shinyjs::onclick("linkPngFormatPredict", shinyjs::toggle("divPngFormatPredict", anim = TRUE, animType = "slide", time = 0.2))
+  shinyjs::onclick("linkFormatFit", shinyjs::toggle("divFormatFit", anim = TRUE, animType = "slide", time = 0.2))
+  
+  
+  # --- download handlers ----
+  output$dlFitPlot <- downloadHandler(
+    filename = function() {
+      "FitPlot.png"
+    },
+    content = function(file) {
+      ggplot2::ggsave(file,
+                      plot = plot_dist(), device = "png",
+                      width = get_width2(), height = get_height2(), dpi = get_dpi2()
+      )
+    }
+  )
+  
+  output$dlPredPlot <- downloadHandler(
+    filename = function() {
+      "ssdtools_modelAveragePlot.png"
+    },
+    content = function(file) {
+      ggplot2::ggsave(file,
+                      plot = plot_model_average(), device = "png",
+                      width = get_width(), height = get_height(), dpi = get_dpi()
+      )
+    }
+  )
+  
+  output$dlFitRds <- downloadHandler(
+    filename = function() {
+      "FitPlot.rds"
+    },
+    content = function(file) {
+      saveRDS(plot_dist(), file = file)
+    }
+  )
+  
+  
+  ########### Observers --------------------
+  # --- info
+  observeEvent(input$infoCl, {
+    shinyjs::toggle("clInfoText", anim = FALSE, animType = "slide", time = 0.2)
+  })
+  
+  observeEvent(input$infoUpload, {
+    shinyjs::toggle("infoUploadText", anim = TRUE, animType = "slide", time = 0.2)
+  })
+  
+  observeEvent(input$infoDemo, {
+    shinyjs::toggle("infoDemoText", anim = TRUE, animType = "slide", time = 0.2)
+  })
+  
+  observeEvent(input$infoHands, {
+    shinyjs::toggle("infoHandsText", anim = TRUE, animType = "slide", time = 0.2)
+  })
+  
+  observeEvent(input$infoConc, {
+    shinyjs::toggle("infoConcText", anim = TRUE, animType = "slide", time = 0.2)
+  })
+  
+  # --- user data
+  observeEvent(input$uploadData, {
+    upload.values$upload_state <- "upload"
+  })
+  
+  observeEvent(input$hot, {
+    upload.values$upload_state <- "hot"
+  })
+  
+  ########### Render UI Translations -------------------
+  output$ui_1choose <- renderUI({
+    h4(tr("ui_1choose", trans()))
+  })
+  
+  output$ui_navtitle <- renderUI({
+    HTML(tr("ui_navtitle", trans()))
+  })
+  
+  output$ui_nav1 <- renderUI({
+    HTML(tr("ui_nav1", trans()))
+  })
+  
+  output$ui_nav2 <- renderUI({
+    HTML(tr("ui_nav2", trans()))
+  })
+  
+  output$ui_nav3 <- renderUI({
+    HTML(tr("ui_nav3", trans()))
+  })
+  
+  output$ui_nav4 <- renderUI({
+    HTML(tr("ui_nav4", trans()))
+  })
+  
+  output$ui_navabout <- renderUI({
+    HTML(tr("ui_navabout", trans()))
+  })
+  
+  output$ui_navguide <- renderUI({
+    HTML(tr("ui_navguide", trans()))
+  })
+  
+  output$ui_1csv <- renderUI({
+    p(tr("ui_1csv", trans()))
+  })
+  
+  output$ui_1csvhelp <- renderUI({
+    helpText(tr("ui_1csvhelp", trans()))
+  })
+  
+  output$ui_1csvupload <- renderUI({
+    fileInput("uploadData",
+              buttonLabel = span(tagList(icon("upload"), "csv")),
+              label = "", placeholder = tr("ui_1csvlabel", trans()),
+              accept = c(".csv")
+    )
+  })
+  
+  output$ui_1table1 <- renderUI({
+    p(tr("ui_1table", trans()))
+  })
+  
+  output$ui_1tablehelp <- renderUI({
+    helpText(tr("ui_1tablehelp", trans()))
+  })
+  
+  output$ui_1preview <- renderUI({
+    h4(tr("ui_1preview", trans()))
+  })
+  
+  output$ui_1note1 <- renderUI({
+    helpText(tr("ui_1note", trans()))
+  })
+  
+  output$ui_2png <- renderUI({
+    actionLink("linkFormatFit", label = tr("ui_2png", trans()))
+  })
+  
+  output$ui_2width <- renderUI({
+    numericInput("selectWidth2", label = tr("ui_2width", trans()), min = 1, max = 20, step = 1, value = 8)
+  })
+  
+  output$ui_2height <- renderUI({
+    numericInput("selectHeight2", label = tr("ui_2height", trans()), min = 1, max = 20, step = 1, value = 6)
+  })
+  
+  output$ui_2dpi <- renderUI({
+    numericInput("selectDpi2", label = tr("ui_2dpi", trans()), min = 50, max = 3000, step = 50, value = 300)
+  })
+  
+  output$ui_censor_type <- renderUI({
+    censor_label <- tr("ui_iscensor", trans())
+    radioButtons("is_censor", censor_label,
+                 choices = c("Censored", "Uncensored"),
+                 selected = "Censored", inline = TRUE
+    )
+  })
+  
+  output$ui_2Conc <- renderUI({
+    req(input$is_censor)
+    if (input$is_censor != "Censored") {
+      return(selectInput("selectConc",
+                         label = label_mandatory(tr("ui_2conc", trans())),
+                         choices = column_names(),
+                         selected = guess_conc()
+      ))
+    }
+    div(
+      selectInput("selectConc_l",
+                  label = label_mandatory(tr("ui_2conc_l", trans())),
+                  choices = column_names(),
+                  selected = guess_conc()
+      ),
+      selectInput("selectConc_u",
+                  label = label_mandatory(tr("ui_2conc_u", trans())),
+                  choices = column_names(),
+                  selected = guess_conc()
+      )
+    )
+  })
+  
+  
+  output$selectSpecies <- renderUI({
+    selectInput("selectSpecies",
+                label = label_mandatory(tr("ui_2sp", trans())),
+                choices = c(column_names(),"None"),
+                selected = "None"
+    )
+  })
+  
+  output$ui_2selectNit <- renderUI({
+    choices <- c("1,000", "5,000", "10,000", "50,000", "100,000")
+    selectInput("selectNit",
+                label = tr("ui_2Nit", trans()),
+                choices = choices,
+                selected = choices[1],
+                width = "150px"
+    )
+  })
+  
+  output$selectGroup <- renderUI({
+    selectInput("selectGroup",
+                label = label_mandatory(tr("ui_2sp", trans())),
+                choices = c(column_names(),"None"),
+                selected = "None"
+    )
+  })
+  
+  output$ui_2plot <- renderUI({
+    h4(tr("ui_2plot", trans()))
+  })
+  
+  output$ui_2plot_cpo <- renderUI({
+    h4(tr("ui_2plot_cpo", trans()))
+  })
+  
+  output$ui_2dlplot <- renderUI({
+    downloadButton("dlFitPlot",
+                   label = tr("ui_2dlplot", trans()),
+                   style = "padding:4px; font-size:80%"
+    )
+  })
+  
+  output$ui_2dlrds <- renderUI({
+    downloadButton("dlFitRds",
+                   label = tr("ui_2dlrds", trans()),
+                   style = "padding:4px; font-size:80%"
+    )
+  })
+  
+  output$ui_2textGOF <- renderText({
+    "Goodness of fit plots (for log center-scaled data)"
+  })
+ 
+  output$ui_3selectQ <- renderUI({
+    numericInput("selectQ", label = tr("ui_2q", trans()), value = 5, min = 1, max = 100)
+  })
+  
+  output$ui_3HC <- renderText({
+    print_HCQ()
+  })
+  
+  output$ui_3dlplot <- renderUI({
+    downloadButton("dlFitPlot",
+                   label = tr("ui_2dlplot", trans()),
+                   style = "padding:4px; font-size:80%"
+    )
+  })
+  
+  output$ui_3plot <- renderUI({
+    h4(tr("ui_3plot", trans()))
+  })
+  
+  
+  output$ui_4dlplot <- renderUI({
+    downloadButton("dlFitPlot",
+                   label = tr("ui_2dlplot", trans()),
+                   style = "padding:4px; font-size:80%"
+    )
+  })
+  
+  output$ui_4plot <- renderUI({
+    h4(tr("ui_4plot", trans()))
+  })
+  
+  output$ui_about <- renderUI({
+    ver <- paste("ssdtools version:", utils::packageVersion("ssdtools"))
+    sver <- paste("shinyssdtools version:", utils::packageVersion("shinyssdtools"))
+    return({
+      tagList(
+        p(ver),
+        p(sver),
+        includeMarkdown(system.file("extdata/about-en.md", package = "shinyssdtools"))
+      )
+    })
+  })
+}

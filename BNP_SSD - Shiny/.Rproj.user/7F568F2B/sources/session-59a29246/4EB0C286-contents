@@ -1,0 +1,462 @@
+############################################################################
+####Gibbs Sampling for Fitting a Sparse Finite Multivariate Gaussian Mixture
+############################################################################
+
+logDiffExp <- function(eta, ls0){
+  vec_eta <- seq(1, eta, 1)
+  l <- log(vec_eta) + log(1-exp(ls0-log(vec_eta)))
+  return(sum(l))
+}
+
+sample.py_w.trunc <- function(S_k, alpha, sigma, m){
+  Nk_j <- table(S_k) # multiplicities of distinct values
+  t <- as.numeric(names(Nk_j)) # distinct values
+  n <- length(S_k)
+  K <- length(Nk_j)
+  
+  # sample ptilde~Dir(Nk_1-sigma,...,Nk_K-sigma,n-K*sigma)
+  ptilde <- bayesm::rdirichlet(c(Nk_j-sigma,alpha+sigma*K))
+  # cat("\n ptilde : ", ptilde)
+  # sample frequency values for temp each components
+  freqtemp <- rep(0,m)
+  k_max <- 1
+  freqtemp[1] <- 1 - sigma
+  for(l in 1:m-1){
+    t_bound <- runif(1,0,1)*(l+alpha+sigma*K)
+    k = -1
+    accu_val <- 0
+    
+    while(t_bound >= accu_val){
+      k <- k+1
+      if(k == k_max){
+        break
+      }
+      accu_val <- accu_val + freqtemp[k+1]
+    }
+    if(k < k_max){
+      freqtemp[k+1] <- freqtemp[k+1]+1
+    } else {
+      freqtemp[k+1] <- 1-sigma
+      k_max <- k_max + 1
+    }
+  }
+  # join weights
+  P_h <- c(ptilde[1:K], ptilde[length(ptilde)]*freqtemp/m)
+  return(P_h/sum(P_h))
+}
+
+
+MultVar_NormMixt_Gibbs_IndPriorNormalgamma <- function(y, s0=0.5, alpha=0, C0, c0, g0, G0, b0, B0k, nu, lam_0, M, burnin, c_proposal, priorOnalpha, 
+                                                       priorOns0, typePrior, lambda, m_imp=10, a_gam=1, b_gam=20, a_beta=0.5, b_beta=2) {
+  
+  N <- nrow(y)  #number of observations
+  r <- ncol(y)  #number of dimensions
+  
+  ## initial classification
+  K <- sample.int(15, 1)
+  print(K)
+  groups <- K
+  cl_y <- kmeans(y, centers = groups, nstart = 30)
+  S_0 <- cl_y$cluster
+  mu_0 <- cbind(t(cl_y$centers))
+  
+  ## initial values for parameters to be estimated:
+  eta_0 <- rep(1/K, K)
+  sigma_0 <- array(0, dim = c(r, r, K))
+  for (k in 1:K) {
+    sigma_0[, , k] <- C0
+  }
+
+  ##change!!!!
+  R <- apply(y, 2, function(x) diff(range(x)))
+  
+  ## initializing current values:
+  mu_j <- matrix(0, r, K)
+  S_j <- rep(0, N)
+  C0_j <- matrix(0, r, r)
+  
+  eta_j <- eta_0
+  sigma_j <- sigma_0
+  invsigma_j <- sigma_j
+  det_invsigma_j <- rep(0, K)
+  mu_j <- mu_0
+  S_j <- S_0
+  #B_j <- B_0
+  B_j <- lam_0
+  
+  C0_j <- C0
+  #change
+  #invB0_j <- solve(B0)
+  invB0_j <- solve(B0k)
+  b0_j <- b0
+  Nk_j <- tabulate(S_j, K)
+  print(Nk_j)
+  s0_p <- 0
+  
+  ## generating lists for storing the draws:
+  result <- list(Eta = list(), Mu = list(), Sigma = list(), S_alt_matrix = matrix(0L, M+burnin, N),
+                 Nk_matrix_alt = list(), Nk_view = list(), B = matrix(0, M+burnin, r), 
+                 s0_vector = rep(0, M+burnin), alpha_vector = rep(0, M), mixlik = rep(0, M+burnin), 
+                 mixprior = rep(0, M+burnin), nonnormpost = rep(0, M+burnin), cdpost = rep(0, M+burnin),
+                 nonnormpost_mode_list = list(), mixlik_mode_list = list())
+  
+  
+  Acc_s0 <- rep(FALSE, M+burnin)  #for storing the acceptance results in the MH step
+  Acc_alpha <- rep(FALSE, M+burnin)
+  
+  ## Initialising the storing matrices:
+  result$Mu[[1]] <- mu_0
+  result$Sigma[[1]] <- sigma_0
+  result$Eta[[1]] <- eta_0
+  result$S_alt_matrix[1, ] <- S_0
+  #result$B[1, ] <- B_0
+  result$B[1, ] <- lam_0
+  result$Nk_matrix_alt[[1]] <- Nk_j
+  for (k in 1:K) {
+    result$nonnormpost_mode_list[[k]] <- list(nonnormpost = -(10)^18)
+    result$mixlik_mode_list[[k]] <- list(mixlik = -(10)^18)
+  }
+  
+  
+  
+  
+  ####################################################################################### simulation starts:
+  s <- 1
+  result$Nk_view[[1]] <- Nk_j
+  m <- 2
+  while (m <= M+burnin) {
+    
+    # if (m == burnin) {
+    #   m <- 1
+    #   burnin <- 0
+    # }
+    
+    p_gig <- nu - K/2
+    a_gig <- 2 * nu
+    gn <- g0 + K * c0
+    
+    #################### first step: parameter simulation (conditional on classification S_j): (1a): Sample eta_j:
+    eta_j <- sample.py_w.trunc(S_j, alpha = alpha, sigma = s0, m=m_imp)
+    K <- length(eta_j) # length of joint proba
+    if(K == 1){
+      eta_j <- c(eta_j,0)
+      K <- 2
+    }
+      
+    
+    ### relevant component specific quantities:
+    mean_yk <- matrix(0, r, K)
+    mean_yk <- sapply(1:K, function(k) colMeans(y[S_j == k, , drop = FALSE]))
+    if (sum(is.na(mean_yk)) > 0) {
+      ## to catch the case if a group is empty: NA values are substituted by zeros
+      mean_yk[is.na(mean_yk)] <- 0
+    }
+    Nk_j <- tabulate(S_j, K)
+    Nk_alt_j <- Nk_j
+    S_alt_j <- S_j
+    
+    
+    #### (1b): sample Sigma^{-1} for each component k: calculate posterior moments ck and Ck and sample
+    #### from the inverted Wishart distribution:
+    sigma_j <- array(0, dim = c(r, r, K))
+    invsigma_j <- sigma_j
+    Ck <- array(0, dim = c(r, r, K))
+    ck <- c0 + Nk_j/2
+    for (k in 1:K) {
+      if (Nk_j[k] != 0) {
+        # Bettina:
+        Ck[, , k] <- C0_j + 0.5 * crossprod(sweep(y[S_j == k, , drop = FALSE], 2, mu_j[, 
+                                                                                       k], FUN = "-"))
+      } else {
+        Ck[, , k] <- C0_j
+      }
+      sig <- rwishart(2 * ck[k], 0.5 * chol2inv(chol(Ck[, , k])))  #attention: rwishart(nu,v)(Rossi)=> nu=2*c0,v=0.5*C0, wishart(c0,C0) (FS)
+      sigma_j[, , k] <- sig$IW
+      invsigma_j[, , k] <- sig$W
+      det_invsigma_j[k] <- det(invsigma_j[, , k])
+    }
+    
+    
+    #### (1c): Sample mu_j for each component k:
+    mu_j <- matrix(0, r, K)
+    Bk <- array(0, dim = c(r, r, K))
+    bk <- matrix(0, r, K)
+    invB0_j <- diag(1/((R^2) * B_j))
+    for (k in 1:K) {
+      Bk[, , k] <- chol2inv(chol(invB0_j + invsigma_j[, , k] * Nk_j[k]))
+      bk[, k] <- Bk[, , k] %*% (invB0_j %*% b0_j + invsigma_j[, , k] %*% mean_yk[, k] * Nk_j[k])
+      mu_j[, k] <- t(chol(Bk[, , k])) %*% rnorm(r) + bk[, k]
+    }
+    
+    
+    
+    #################### second step: classification of observations (conditional on knowing the parameters) Bettina:
+    mat <- sapply(1:K, function(k) eta_j[k]*dmvnorm(y, mu_j[, k], sigma_j[, , k]))
+    S_j <- apply(mat, 1, function(x) sample(1:K, 1, prob = x))
+    Nk_j <- tabulate(S_j, K)
+    
+    # clean empty clusters
+    for(i in 1:K){
+      # If cluster i empty
+      if(Nk_j[i] == 0){
+        # Find the last full cluster
+        for(j in K:i){
+          # Then we snap the 2 clusters 
+          if(Nk_j[j] > 0){
+            Nk_j[i] <- Nk_j[j]
+            Nk_j[j] <- 0
+            S_j[which(S_j == j)] <- i
+            # mu 
+            mu_temp <- mu_j[, j] 
+            mu_j[, j] <- mu_j[, i]
+            mu_j[, i] <- mu_temp
+            # sigma and invsigma
+            sigma_temp <- sigma_j[, , j] 
+            sigma_j[, , j] <- sigma_j[, , i]
+            sigma_j[, , i] <- sigma_temp
+            invsigma_temp <- invsigma_j[, , j] 
+            invsigma_j[, , j] <- invsigma_j[, , i]
+            invsigma_j[, , i] <- invsigma_temp
+            # eta_j
+            eta_temp <- eta_j[j]
+            eta_j[j] <- eta_j[i]
+            eta_j[i] <- eta_temp
+            
+            break
+          }
+        }
+      }
+    }
+    Nk_j <- tabulate(S_j)
+    K <- length(Nk_j)
+    if(K == 1){ # We force the data to stay under the willing form
+      eta_j <- c(eta_j[K])
+      mu_j <- cbind(mu_j[,K])
+      sigma_j <- abind(sigma_j[, , K], rev.along=0)
+      invsigma_j <- abind(invsigma_j[, , K], rev.along=0)
+    }
+    else{
+      mu_j <- mu_j[, 1:K]
+      sigma_j <- sigma_j[, , 1:K]
+      invsigma_j <- invsigma_j[, , 1:K]
+      eta_j <- eta_j[1:K]
+    }
+    
+    if (!(m%%500)) {
+      cat("\n", m, " ", Nk_j)
+      s <- s + 1
+      result$Nk_view[[s]] <- Nk_j
+    }
+    
+    ###################### third step: sample the hyperparameters (3a): sample the hyperparameter-vector B conditionally
+    ###################### on mu_j[,k] and sigma_j[,,k]:
+    b_gig <- vector(length = r)
+    b_gig <- (rowSums((mu_j - b0_j)^2))/R^2
+    if (lambda == TRUE) {
+      for (l in 1:r) {
+        # accept/reject algorithm from Helga:
+        if (b_gig[l] < 1e-06) {
+          check <- 0
+          while (check == 0) {
+            ran <- 1/rgamma(1, shape = -p_gig, scale = 2/b_gig[l])
+            check <- (runif(1) < exp(-a_gig/2 * ran))
+          }
+        } else {
+          ### random generator from package 'Runuran': Create distribution object for GIG distribution
+          distr <- udgig(theta = p_gig, psi = a_gig, chi = b_gig[l])  #b_gig=chi,a_gig=psi,p_gig=theta
+          ## Generate generator object; use method PINV (inversion)
+          gen <- pinvd.new(distr)
+          ## Draw a sample of size 1
+          ran <- ur(gen, 1)
+        }
+        B_j[l] <- ran
+      }
+    } else {
+      #B_j <- B_0
+      B_j <- lam_0
+    }
+    
+    
+    
+    
+    #### (3b): sample the hyperparameter C0 conditionally on sigma:
+    C0_j <- rwishart(2 * gn, 0.5 * chol2inv(chol(G0 + rowSums(invsigma_j, dims = 2))))$W  #from package 'bayesm'
+    
+    
+    
+    #### (3c):assuming that the mean appearing in the normal prior on the group mean mu_k follows a
+    #### improper prior p(b0)=const, sample b0 from N(1/K*sum(mu_i);1/K*B0 )
+    B0 <- diag((R^2) * B_j)
+    b0_j <- mvrnorm(1, rowSums(mu_j)/K, 1/K * B0)
+    
+    
+    
+    #### (3d): sample the hyperparameter alpha from p(alpha|eta,a,b) via MH-step:
+    b_unif <- 1  #s0~U(0,1)  
+    
+    ## current value:
+    acc_s0 <- FALSE
+    s0_j <- s0
+    if (priorOns0 == T) {
+      ## proposal value:
+      ls0_j <- log(s0_j)
+      ls0_p <- ls0_j + rnorm(1, 0, c_proposal[2])
+      s0_p <- exp(ls0_p)
+      # If outside of the support reject
+      # If inside do the classic MH step
+      if(s0_p<1 && s0_p>0){
+        # likelihood ratio between the proposed value and the previous value:
+        # cat("\n Nk_j : ", Nk_j, " ls0_j : ", ls0_j, " ls0_p : ", ls0_p)
+        # rising_fac <- sum(sapply(Nk_j, logDiffExp, ls0=ls0_j) - sapply(Nk_j, logDiffExp, ls0=ls0_p))
+        # cat("\n rising_fac : ", rising_fac)
+        #s0~Beta(a,b)
+        if (typePrior == "beta"){
+          lu1 <- K * (ls0_j - log(s0_p)) + sum(lgamma(Nk_j-s0_j)-lgamma(Nk_j-s0_p)) + K * (lgamma(1-s0_p) - lgamma(1-s0_j)) 
+          + lgamma(alpha/s0_j + K) - lgamma(alpha/s0_p + K) + lgamma(alpha/s0_p) - lgamma(alpha/s0_j) 
+          + (a_beta-1)*(ls0_j-log(s0_p)) + (b_beta-1)*(log(1-s0_j)-log(1-s0_p))
+          u1 <- min(exp(lu1), 1)
+        }
+        else if(typePrior == "unif"){
+          lu1 <- K * (ls0_j - log(s0_p)) + sum(lgamma(Nk_j-s0_j)-lgamma(Nk_j-s0_p)) + K * (lgamma(1-s0_p) - lgamma(1-s0_j)) 
+          + lgamma(alpha/s0_j + K) - lgamma(alpha/s0_p + K) + lgamma(alpha/s0_p) - lgamma(alpha/s0_j) 
+          u1 <- min(exp(lu1), b_unif)
+        }
+        else{
+          print('error: prior no implemented')
+          break;
+        }
+        ## 
+        u2 <- runif(1)
+        ## the proposed value is accepted with probability u2
+        if (u2 <= u1) {
+          s0_j <- s0_p
+            acc_s0 <- TRUE
+        }
+      }
+    }
+    
+    # alpha~G(a_gam,b_gam)
+    acc_alpha <- FALSE
+    alpha_j <- alpha
+    if(priorOnalpha == T){
+      ## proposal value:
+      lalpha_p <- log(alpha_j) + rnorm(1, 0, c_proposal[1])
+      alpha_p <- exp(lalpha_p)
+      
+      if(alpha_p>0){
+        # likelihood ratio between the proposed value and the previous value:
+        lu1 <- lgamma(alpha_p + N) - lgamma(alpha_j + N) + lgamma(alpha_j) - lgamma(alpha_p) + 
+          sum(log(s0 + alpha_j + 0:(N-1)*s0) - log(s0 + alpha_p + 0:(N-1)*s0)) +
+          (a_gam - 1) * (log(alpha_p) - log(alpha_j)) - (alpha_p - alpha_j) * b_gam
+        u1 <- min(exp(lu1), 1)
+        
+        u2 <- runif(1)
+        ## the proposed value is accepted with probability u2
+        if (u2 <= u1) {
+          alpha_j <- alpha_p
+          acc_alpha <- TRUE
+        }
+      }
+    }
+    
+    s0 <- s0_j
+    alpha <- alpha_j
+    
+    
+    if(!m%%100){
+      delta <- sum(Acc_s0)/m
+    }
+    
+    ##### TO DO ##### 
+    # #### additional step (3e): evaluating the mixture likelihood and the complete-data posterior
+    # 
+    # ## evaluating the mixture likelihood:
+    # mat_neu <- sapply(1:K, function(k) eta_j[k] * dmvnorm(y, mu_j[, k], sigma_j[, , k]))
+    # mixlik_j <- sum(log(rowSums(mat_neu)))
+    # 
+    # ## evaluating the mixture prior:
+    # mixprior_j <- log(MCMCpack::ddirichlet(as.vector(eta_j), rep(alpha, K))) + sum(dmvnorm(t(mu_j), 
+    #                                                                                     b0, diag((R^2) * B_j), log = TRUE)) + sum(sapply(1:K, function(k) lndIWishart(2 * c0, 
+    #                                                                                                                                                                   0.5 * C0_j, sigma_j[, , k]))) + lndIWishart(2 * g0, 0.5 * G0, C0_j) + dgamma(alpha, shape = a_gam, 
+    #                                                                                                                                                                                                                                                scale = 1/b_gam, log = TRUE) + sum(dgamma(B_j, shape = nu, scale = 1/nu, log = TRUE))
+    # 
+    # ## evaluating the nonnormalized complete-data posterior:
+    # cd <- c()
+    # for (k in 1:K) {
+    #   if (sum(S_j == k)) {
+    #     cd[S_j == k] <- dmvnorm(y[S_j == k, ], mu_j[, k], sigma_j[, , k], log = TRUE)
+    #   }
+    # }
+    # cdpost_j <- sum(cd) + mixprior_j
+    # if (burnin == 0) {
+    #   result$mixlik[m] <- mixlik_j
+    #   result$mixprior[m] <- mixprior_j
+    #   result$nonnormpost[m] <- result$mixlik[m] + result$mixprior[m]
+    #   result$cdpost[m] <- cdpost_j
+    # }
+    
+    
+    
+    ###################### fourth step: permutation of the labeling and storing the results
+    perm <- sample(K)
+    
+    ### storing the new values:
+    # if(burnin == 0){
+      Acc_s0[m] <- acc_s0
+      Acc_alpha[m] <- acc_alpha
+      result$s0_vector[m] <- s0_j
+      result$alpha_vector[m] <- alpha_j
+      result$Mu[[m]] <- mu_j
+      result$Eta[[m]] <- eta_j
+      result$S_alt_matrix[m, ] <- perm[S_alt_j]
+      result$Nk_matrix_alt[[m]] <- Nk_alt_j
+      result$B[m, ] <- B_j
+      result$Sigma[[m]] <- sigma_j
+    # }
+    
+    # if ((burnin == 0) & (result$nonnormpost[m] > result$nonnormpost_mode_list[[K0_j]]$nonnormpost)) {
+    #   result$nonnormpost_mode_list[[K0_j]] <- list(nonnormpost = result$nonnormpost[m], mu = mu_j[, 
+    #                                                                                               Nk_alt_j != 0], bk = bk[, Nk_alt_j != 0], Bk = Bk[, , Nk_alt_j != 0], eta = eta_j[Nk_alt_j != 
+    #                                                                                                                                                                                   0])
+    # }
+    # if ((burnin == 0) & (result$mixlik[m] > result$mixlik_mode_list[[K0_j]]$mixlik)) {
+    #   result$mixlik_mode_list[[K0_j]] <- list(mixlik = result$mixlik[m], mu = mu_j[, Nk_alt_j != 
+    #                                                                                  0], Sigma = sigma_j[, , Nk_alt_j != 0], eta = eta_j[Nk_alt_j != 0])  ##Bettina fragen:mixture likelihood oder complete data likelihood nehmen?
+    # }
+    
+    m <- m + 1
+  }
+  result$acc_rate_s0 <- c(sum(Acc_s0[burnin:(M+burnin)])/M, sum(Acc_s0)/(M+burnin))
+  result$acc_rate_alpha <- c(sum(Acc_alpha[burnin:(M+burnin)])/M, sum(Acc_alpha)/(M+burnin))
+  return(result)
+}
+
+
+
+dmvnorm <- function(x, mean, sigma, log = FALSE) {
+  if (is.vector(x)) {
+    x <- matrix(x, ncol = length(x))
+  }
+  if (missing(mean)) {
+    mean <- rep(0, length = ncol(x))
+  }
+  if (missing(sigma)) {
+    sigma <- diag(ncol(x))
+  }
+  if (NCOL(x) != NCOL(sigma)) {
+    stop("x and sigma have non-conforming size")
+  }
+  if (!isSymmetric(sigma, tol = sqrt(.Machine$double.eps), check.attributes = FALSE)) {
+    stop("sigma must be a symmetric matrix")
+  }
+  if (length(mean) != NROW(sigma)) {
+    stop("mean and sigma have non-conforming size")
+  }
+  distval <- mahalanobis(x, center = mean, cov = chol2inv(chol(sigma)), inverted = TRUE)
+  logdet <- sum(log(eigen(sigma, symmetric = TRUE, only.values = TRUE)$values))
+  logretval <- -(ncol(x) * log(2 * pi) + logdet + distval)/2
+  if (log) 
+    return(logretval)
+  exp(logretval)
+}
+
