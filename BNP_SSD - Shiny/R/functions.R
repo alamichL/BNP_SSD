@@ -145,7 +145,7 @@ qmixnorm = function(p, mus, sigmas, probs, interval = c(-10**6, 10**6)){
   })
 }
 
-compute_thinning_grid <- function(Nit, thinning_to = 200) {
+compute_thinning_grid <- function(Nit, thinning_to = 800) {
   if (Nit <= 2 * thinning_to) { # Factor 2 to reduce the probability of having the same iterations selected twice
     it_retained <- 1:Nit
   }

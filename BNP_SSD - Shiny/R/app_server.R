@@ -339,9 +339,15 @@ app_server <- function(input, output, session) {
     quant <- get_HCQ()
     q <- inv_centlog(quant, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log)
     n <- length(q)
-    res <- data.frame(mean=mean(q), sd=sd(q), 
-                inf=mean(q)-qnorm(0.025)*sd(q)/sqrt(n),
-                sup=mean(q)+qnorm(0.025)*sd(q)/sqrt(n))
+    sort_q <- sort(q)
+    cb_25 <- round(n*0.025)
+    cb_97 <- round(n*0.975) 
+    res <- data.frame(mean=round(mean(q),4), 
+                # CI_inf=round(mean(q)-qnorm(0.975)*sd(q)/sqrt(n),4),
+                # CI_sup=round(mean(q)+qnorm(0.975)*sd(q)/sqrt(n),4),
+                cred_band_inf=round(sort_q[cb_25],4),
+                cred_band_sup=round(sort_q[cb_97],4)
+                )
     
     res
   })

@@ -134,9 +134,9 @@ app_ui <- function() {
             )),
             br(), br(),
             plotOutput("QQPlot"),
-            br(), br(),
+            br(),
             textOutput("ui_3HC"),
-            br(), br(),
+            br(),
             DT::dataTableOutput("QQTable")
           )
         )
