@@ -46,6 +46,10 @@ app_server <- function(input, output, session) {
         return(p("We're not sure what to do with that file type. Please upload a csv."))
       }
       return(readr::read_csv(data$datapath))
+    } else if (upload.values$upload_state == "demo1") {
+        return(salinity)
+    } else if (upload.values$upload_state == "demo2") {
+      return(acidity)
     } else if (upload.values$upload_state == "hot") {
       return(hot_data())
     }
@@ -208,9 +212,19 @@ app_server <- function(input, output, session) {
     names(clean_data())
   })
   
+  guess_concl <- reactive({
+    name <- column_names()
+    name[grepl("left", name %>% tolower()) | grepl("conc", name %>% tolower()) | grepl("low", name %>% tolower())][1]
+  })
+  
   guess_conc <- reactive({
     name <- column_names()
-    name[grepl("conc", name %>% tolower())][1]
+    name[grepl("x", name %>% tolower()) | grepl("conc", name %>% tolower())][1]
+  })
+  
+  guess_concu <- reactive({
+    name <- column_names()
+    name[grepl("right", name %>% tolower()) | grepl("conc", name %>% tolower()) | grepl("up", name %>% tolower())][1]
   })
   
   guess_spp <- reactive({
@@ -318,26 +332,26 @@ app_server <- function(input, output, session) {
   
   gof_plot <- eventReactive(input$ui_makeFig, {
     x <- fit_dist()
+    prep_dat <- prep_data()
     withProgress(message = 'GOF plot', value = 0, {
-      gof<- BNPdensity::GOFplots(x)})
+      gof <- plot_GoF(x, prep_dat)})
     gof
   })
   
   # Compute the HC_Q
   get_HCQ <- reactive({
     req(input$selectQ)
+    prep_dat <- prep_data()
     Q <- input$selectQ/100
     fit <- fit_dist()
     withProgress(message = paste0('Estimating HC',input$selectQ), value = 0, {
       q <- get_quantile(fit, Q)
     })
-    q
+    inv_centlog(q, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log)
   })
   
   get_HCQ_mean_IC <- reactive({
-    prep_dat <- prep_data()
-    quant <- get_HCQ()
-    q <- inv_centlog(quant, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log)
+    q <- get_HCQ()
     n <- length(q)
     sort_q <- sort(q)
     cb_25 <- round(n*0.025)
@@ -354,18 +368,22 @@ app_server <- function(input, output, session) {
   
   plot_HCQ <- reactive({
     req(input$selectQ)
+    prep_dat <- prep_data()
     Q <- input$selectQ/100
     fit <- fit_dist()
     q <- get_HCQ()
     withProgress(message = 'CDF plot', value = 0, {
-      plot_CDF_percentil(fit, q, Q)
+      plot_CDF_percentil(fit, q, Q, prep_dat)
     })
   })
   
   print_HCQ <- reactive({
     Q <- input$selectQ
     res <- get_HCQ_mean_IC()
-    expr <- paste0("The average estimation of HC", Q," is ",round(res$mean,2)," for the original data.")
+    if(!input$log || !input$center)
+      expr <- paste0("The average estimation of HC", Q," is ",round(res$mean,2)," for the original data.")
+    else 
+      expr <- paste0("The average estimation of HC", Q," is ",round(res$mean,2),".")
     expr
   })
   
@@ -383,10 +401,10 @@ app_server <- function(input, output, session) {
     clust <- clust_opt()
     
     if(input$selectGroup=="None")
-      BNPdensity:::plot_clustering_and_CDF(fit, clust)
+      plot_clustering(fit, clust, prep_dat)
     else{
       group <- input$selectGroup %>% make.names()
-      BNPdensity:::plot_clustering_and_CDF(fit, clust, label_vector = prep_dat$data[[group]])
+      plot_clustering(fit, clust, prep_dat, label_vector = prep_dat$data[[group]])
     }
   })
   
@@ -531,8 +549,12 @@ app_server <- function(input, output, session) {
     shinyjs::toggle("infoUploadText", anim = TRUE, animType = "slide", time = 0.2)
   })
   
-  observeEvent(input$infoDemo, {
-    shinyjs::toggle("infoDemoText", anim = TRUE, animType = "slide", time = 0.2)
+  observeEvent(input$infoDemo1, {
+    shinyjs::toggle("infoDemoText1", anim = TRUE, animType = "slide", time = 0.2)
+  })
+  
+  observeEvent(input$infoDemo2, {
+    shinyjs::toggle("infoDemoText2", anim = TRUE, animType = "slide", time = 0.2)
   })
   
   observeEvent(input$infoHands, {
@@ -548,9 +570,33 @@ app_server <- function(input, output, session) {
     upload.values$upload_state <- "upload"
   })
   
+  observeEvent(input$demoData1, {
+    upload.values$upload_state <- "demo1"
+  })
+  
+  observeEvent(input$demoData2, {
+    upload.values$upload_state <- "demo2"
+  })
+  
   observeEvent(input$hot, {
     upload.values$upload_state <- "hot"
   })
+  
+  observeEvent(input$jumpToP2, {
+    updateTabsetPanel(session, "inTabset",
+                      selected = "nav2")
+  })
+  
+  observeEvent(input$jumpToP3, {
+    updateTabsetPanel(session, "inTabset",
+                      selected = "nav3")
+  })
+  
+  observeEvent(input$jumpToP4, {
+    updateTabsetPanel(session, "inTabset",
+                      selected = "nav4")
+  })
+  
   
   ########### Render UI Translations -------------------
   output$ui_1choose <- renderUI({
@@ -577,12 +623,26 @@ app_server <- function(input, output, session) {
     HTML(tr("ui_nav4", trans()))
   })
   
-  output$ui_navabout <- renderUI({
-    HTML(tr("ui_navabout", trans()))
+  output$ui_1data1 <- renderUI({
+    p(tr("ui_1data1", trans()),
+      actionLink("demoData1", tr("ui_1databutton1", trans()), icon = icon("table")))
   })
   
-  output$ui_navguide <- renderUI({
-    HTML(tr("ui_navguide", trans()))
+  output$ui_1datahelp1 <- renderUI({
+    tagList(
+      helpText(tr("ui_1datahelp", trans())),
+    )
+  })
+  
+  output$ui_1data2 <- renderUI({
+    p(tr("ui_1data2", trans()),
+      actionLink("demoData2", tr("ui_1databutton2", trans()), icon = icon("table")))
+  })
+  
+  output$ui_1datahelp2 <- renderUI({
+    tagList(
+      helpText(tr("ui_1datahelp", trans())),
+    )
   })
   
   output$ui_1csv <- renderUI({
@@ -596,7 +656,7 @@ app_server <- function(input, output, session) {
   output$ui_1csvupload <- renderUI({
     fileInput("uploadData",
               buttonLabel = span(tagList(icon("upload"), "csv")),
-              label = "", placeholder = tr("ui_1csvlabel", trans()),
+              label = "", # placeholder = tr("ui_1csvlabel", trans()),
               accept = c(".csv")
     )
   })
@@ -614,7 +674,9 @@ app_server <- function(input, output, session) {
   })
   
   output$ui_1note1 <- renderUI({
-    helpText(tr("ui_1note", trans()))
+    tagList(
+      helpText(tr("ui_1note", trans())),
+      tags$a(href="https://github.com/alamichL/BNP_SSD/", "The code can be found at https://github.com/alamichL/BNP_SSD/"))
   })
   
   output$ui_2png <- renderUI({
@@ -654,12 +716,12 @@ app_server <- function(input, output, session) {
       selectInput("selectConc_l",
                   label = label_mandatory(tr("ui_2conc_l", trans())),
                   choices = column_names(),
-                  selected = guess_conc()
+                  selected = guess_concl()
       ),
       selectInput("selectConc_u",
                   label = label_mandatory(tr("ui_2conc_u", trans())),
                   choices = column_names(),
-                  selected = guess_conc()
+                  selected = guess_concu()
       )
     )
   })
@@ -714,7 +776,7 @@ app_server <- function(input, output, session) {
   })
   
   output$ui_2textGOF <- renderText({
-    "Goodness of fit plots (for log center-scaled data)"
+      "Goodness of fit plots"
   })
  
   output$ui_3selectQ <- renderUI({
@@ -733,7 +795,7 @@ app_server <- function(input, output, session) {
   })
   
   output$ui_3plot <- renderUI({
-    h4(tr("ui_3plot", trans()))
+      h4(tr("ui_3plot", trans()))
   })
   
   
@@ -745,18 +807,10 @@ app_server <- function(input, output, session) {
   })
   
   output$ui_4plot <- renderUI({
-    h4(tr("ui_4plot", trans()))
+      h4(tr("ui_4plot", trans()))
   })
   
-  output$ui_about <- renderUI({
-    ver <- paste("ssdtools version:", utils::packageVersion("ssdtools"))
-    sver <- paste("shinyssdtools version:", utils::packageVersion("shinyssdtools"))
-    return({
-      tagList(
-        p(ver),
-        p(sver),
-        includeMarkdown(system.file("extdata/about-en.md", package = "shinyssdtools"))
-      )
-    })
+  output$ui_4clust <- renderText({
+    "According to the model, data can be separated into the following clusters:"
   })
 }

@@ -1,0 +1,12 @@
+name: BNP_SSD
+title: BNP_SSD
+username: alamichl
+account: alamichl
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 11533077
+bundleId: 8442173
+url: https://alamichl.shinyapps.io/BNP_SSD/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

@@ -8,6 +8,7 @@
 #
 
 library(shiny)
+library(GreedyEPL)
 
 
 # Run the application 

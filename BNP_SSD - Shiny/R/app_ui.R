@@ -10,16 +10,30 @@ app_ui <- function() {
       ".shiny-output-error:before { visibility: hidden; }"
     ),
     navbarPage(
-      title = uiOutput("ui_navtitle"), windowTitle = "BNP_SSD",
+      title = uiOutput("ui_navtitle"), windowTitle = "BNP_SSD", id="inTabset",
 
       # data tab ----------------------------------------------------------------
       tabPanel(
-        title = span(tagList(icon("table"), inline(uiOutput("ui_nav1")))),
+        title = span(tagList(icon("table"), inline(uiOutput("ui_nav1")))), value="nav1",
         fluidRow(
           br(),
           column(
-            5,
+            4,
             uiOutput("ui_1choose"),
+            # demo data
+            inline(uiOutput("ui_1data1")),
+            inline(actionLink("infoDemo1", icon = icon("info-circle"), label = NULL)),
+            shinyjs::hidden(div(
+              id = "infoDemoText1",
+              uiOutput("ui_1datahelp1")
+            )),
+            br(),
+            inline(uiOutput("ui_1data2")),
+            inline(actionLink("infoDemo2", icon = icon("info-circle"), label = NULL)),
+            shinyjs::hidden(div(
+              id = "infoDemoText2",
+              uiOutput("ui_1datahelp2")
+            )),
             # upload csv with data
             br(),
             inline(uiOutput("ui_1csv")),
@@ -40,9 +54,13 @@ app_ui <- function() {
             rhandsontable::rHandsontableOutput("hot")
           ),
           column(
-            7,
+            8,
             uiOutput("ui_1preview"),
-            uiOutput("ui_viewupload")
+            uiOutput("ui_viewupload"),
+            # br(), br(),
+            # conditionalPanel(
+            #   condition = "! (0%in%dim(output.read_data()))",
+            #   actionButton('jumpToP2', 'Go to Fit'))
           )
         ),
         div(
@@ -52,7 +70,7 @@ app_ui <- function() {
       ),
       # fit tab -----------------------------------------------------------------
       tabPanel(
-        title = span(tagList(icon("stats", lib = "glyphicon"), inline(uiOutput("ui_nav2")))),
+        title = span(tagList(icon("stats", lib = "glyphicon"), inline(uiOutput("ui_nav2")))), value="nav2",
         fluidRow(
           column(
             4,
@@ -84,7 +102,8 @@ app_ui <- function() {
             ),
             conditionalPanel(
               condition = "!output.checkfit",
-              actionButton("ui_makeFig", "Fit"),
+              actionButton("ui_makeFig", HTML("<b>Fit the model</b>"), icon("paper-plane"), 
+                           style="color: #000000; background-color: #f5f5f5; border-color: #d0cdcd")
             ),
             conditionalPanel(
               condition = "output.distPlot1",
@@ -102,13 +121,17 @@ app_ui <- function() {
               textOutput("ui_2textGOF")
             ),
             br(),
-            plotOutput("GofPlot")
+            plotOutput("GofPlot"),
+            # br(), br(),
+            # conditionalPanel(
+            #   condition = "output.distPlot1",
+            #   actionButton('jumpToP3', 'Go to HC estimation'))
           )
         )
       ),
       # quantile tab --------------------------------------------------------------
       tabPanel(
-        title = span(tagList(icon("calculator"), inline(uiOutput("ui_nav3")))),
+        title = span(tagList(icon("calculator"), inline(uiOutput("ui_nav3")))), value="nav3",
         fluidRow(
           column(
             4,
@@ -137,13 +160,17 @@ app_ui <- function() {
             br(),
             textOutput("ui_3HC"),
             br(),
-            DT::dataTableOutput("QQTable")
+            DT::dataTableOutput("QQTable"),
+            # br(), br(),
+            # conditionalPanel(
+            #   condition = "output.QQPlot",
+            # actionButton('jumpToP4', 'Go to clustering'))
           )
         )
       ),
       # custer tab --------------------------------------------------------------
       tabPanel(
-        title = span(tagList(icon("circle-nodes", library = "font-awesome"), inline(uiOutput("ui_nav4")))),
+        title = span(tagList(icon("circle-nodes", library = "font-awesome"), inline(uiOutput("ui_nav4")))), value="nav4",
         fluidRow(
           column(
             4,
@@ -169,7 +196,12 @@ app_ui <- function() {
             )),
             br(), br(),
             plotOutput("ClustPlot"),
-            br(), br(),
+            br(), 
+            inline(conditionalPanel(
+              condition = "output.ClustPlot",
+              textOutput("ui_4clust"),
+            )),
+            br(),
             DT::dataTableOutput("clustTable")
           )
         )

@@ -166,16 +166,16 @@ get_quantile <- function(fit, Q){
 plot_distributions <- function(fit, prep_dat, is.cens, text_size){
   if(!is.cens){
     m <- ncol(fit$qx)
-    nbins <- length(hist(fit$data[,1], plot = FALSE)$breaks) - 1
-    # nbins <- length(hist(as.data.frame(prep_dat$original)[,2], plot = FALSE)$breaks) - 1
-    # gp <- ggplot2::ggplot(data.frame(xx = inv_centlog(fit$xx, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log), 
-    #                                  infCI = fit$qx[, 2], supCI = fit$qx[, m], y =fit$qx[, 1]), ggplot2::aes_string(x = "xx")) +
-    gp <- ggplot2::ggplot(data.frame(xx = fit$xx, infCI = fit$qx[, 2], supCI = fit$qx[, m], y =fit$qx[, 1]), 
-                          ggplot2::aes_string(x = "xx")) +
+    # nbins <- length(hist(fit$data[,1], plot = FALSE)$breaks) - 1
+    nbins <- length(hist(as.data.frame(prep_dat$original)[,2], plot = FALSE)$breaks) - 1
+    gp <- ggplot2::ggplot(data.frame(xx = inv_centlog(fit$xx, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log),
+                                     infCI = fit$qx[, 2], supCI = fit$qx[, m], y =fit$qx[, 1]), ggplot2::aes_string(x = "xx")) +
+    # gp <- ggplot2::ggplot(data.frame(xx = fit$xx, infCI = fit$qx[, 2], supCI = fit$qx[, m], y =fit$qx[, 1]),
+    #                       ggplot2::aes_string(x = "xx")) +
       ggplot2::theme_classic() +
       ggplot2::geom_histogram(
-        # data = data.frame(x = as.data.frame(prep_dat$original)[,2]), ggplot2::aes_string(x = "x", y = "..density.."),
-        data = data.frame(x = fit$data[,1]), ggplot2::aes_string(x = "x", y = "..density.."),
+        data = data.frame(x = as.data.frame(prep_dat$original)[,2]), ggplot2::aes_string(x = "x", y = "..density.."),
+        # data = data.frame(x = fit$data[,1]), ggplot2::aes_string(x = "x", y = "..density.."),
         fill = grDevices::grey(0.9),
         colour = "black",
         bins = nbins
@@ -186,16 +186,16 @@ plot_distributions <- function(fit, prep_dat, is.cens, text_size){
       ggplot2::xlab("Data") +
       ggplot2::ylab("Density")
   }else{
-    # m <- ncol(fit$qx)
-    # gp <- ggplot2::ggplot(data.frame(xx = inv_centlog(fit$xx, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log), 
-    #                                  infCI = fit$qx[, 2], supCI = fit$qx[, m], y =fit$qx[, 1]), ggplot2::aes_string(x = "xx")) +
-    #   ggplot2::theme_classic() +
-    #   ggplot2::geom_line(ggplot2::aes_string(y = "y"), size = 1.) +
-    #   ggplot2::geom_line(ggplot2::aes_string(y = "infCI"), colour = "blue", linetype = "dotted") +
-    #   ggplot2::geom_line(ggplot2::aes_string(y = "supCI"), colour = "blue", linetype = "dotted") +
-    #   ggplot2::xlab("Data") +
-    #   ggplot2::ylab("Density")
-    gp <- plot(fit)
+    m <- ncol(fit$qx)
+    gp <- ggplot2::ggplot(data.frame(xx = inv_centlog(fit$xx, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log),
+                                     infCI = fit$qx[, 2], supCI = fit$qx[, m], y =fit$qx[, 1]), ggplot2::aes_string(x = "xx")) +
+      ggplot2::theme_classic() +
+      ggplot2::geom_line(ggplot2::aes_string(y = "y"), size = 1.) +
+      ggplot2::geom_line(ggplot2::aes_string(y = "infCI"), colour = "blue", linetype = "dotted") +
+      ggplot2::geom_line(ggplot2::aes_string(y = "supCI"), colour = "blue", linetype = "dotted") +
+      ggplot2::xlab("Data") +
+      ggplot2::ylab("Density")
+    # gp <- plot(fit)
   }
   gp <- gp +
     ggplot2::theme_classic() +
@@ -218,9 +218,87 @@ boxplot_cpo <- function(x){
   bp
 }
 
-plot_CDF_percentil <- function(fit, q, Q){
-  gp <- BNPdensity:::plotCDF_censored(fit) +
+plot_GoF <- function(fit, prep_dat){
+  gp_CDF <- plot_CDF(fit, prep_dat)
+  gp_PDF <- plot_PDF(fit, prep_dat)
+  gp_pplot <- BNPdensity:::pp_plot_censored(fit)
+  gridExtra::grid.arrange(gp_PDF, gp_CDF, gp_pplot)
+}
+
+plot_PDF<- function(fit, prep_dat){
+  grid <- BNPdensity:::grid_from_data(fit$data)
+  if (BNPdensity:::is_semiparametric(fit)) {
+    pdf <- BNPdensity:::get_PDF_semi_BNPdensity(fit = fit, xs = grid)
+  }
+  else {
+    pdf <- BNPdensity:::get_PDF_full_BNPdensity(fit = fit, xs = grid)
+  }
+  ggplot2::ggplot(data = data.frame(data = inv_centlog(grid, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log),
+                                    PDF = pdf), 
+                  ggplot2::aes_string(x = "data", y = "PDF")) + ggplot2::geom_line(color = "red") + 
+    ggplot2::theme_classic() + ggplot2::xlab("Data")
+}
+
+plot_CDF <- function(fit, prep_dat){
+  data <- fit$data
+  grid <- BNPdensity:::grid_from_data(fit$data)
+  data_tr <- inv_centlog(data, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log)
+  Survival_object <- survival::survfit(formula = survival::Surv(data_tr$left, 
+                                                                data_tr$right, type = "interval2") ~ 1)
+  if (BNPdensity:::is_semiparametric(fit)) {
+    cdf <- BNPdensity:::get_CDF_semi_BNPdensity(fit = fit, xs = grid)
+  }
+  else {
+    cdf <- BNPdensity:::get_CDF_full_BNPdensity(fit = fit, xs = grid)
+  }
+  grid_tr <- inv_centlog(grid, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log)
+  ggplot2::ggplot(data = data.frame(data = grid_tr,
+                                    CDF = cdf), 
+                  ggplot2::aes_string(x = "data", y = "CDF")) + 
+    ggplot2::geom_line(color = "red") + ggplot2::theme_classic() + 
+    ggplot2::geom_step(data = data.frame(x = c(Survival_object$time, max(grid_tr)),
+                                         y = c(1 - Survival_object$surv, 1)),
+                       ggplot2::aes_string(x = "x", y = "y")) + ggplot2::xlab("Data")
+}
+
+plot_CDF_percentil <- function(fit, q, Q, prep_dat){
+  gp <- plot_CDF(fit, prep_dat) +
     ggplot2::geom_vline(xintercept=mean(q), linetype="dotted")+
     ggplot2::geom_hline(yintercept=Q, linetype="dotted")
   gp
+}
+
+plot_clustering <- function(fit, clustering, prep_dat, label_vector = NULL){
+  data <- fit$data
+  grid <- BNPdensity:::decide_abscissa(data, clustering)$loc
+  data_tr <- inv_centlog(data, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log)
+  Survival_object <- survival::survfit(formula = survival::Surv(data_tr$left, 
+                                                                data_tr$right, type = "interval2") ~ 1)
+  if (BNPdensity:::is_semiparametric(fit)) {
+    cdf <- BNPdensity:::get_CDF_semi_BNPdensity(fit = fit, xs = grid[!is.na(grid)])
+  }
+  else {
+    cdf <- BNPdensity:::get_CDF_full_BNPdensity(fit = fit, xs = grid[!is.na(grid)])
+  }
+  grid_tr <- inv_centlog(grid, prep_dat$centre, prep_dat$scale, prep_dat$cs, prep_dat$log)
+  p <- ggplot2::ggplot(data = data.frame(data = grid_tr[!is.na(grid_tr)], 
+                                         CDF = cdf, 
+                                         cluster_id = clustering[!is.na(grid_tr)]), 
+                       ggplot2::aes_string(x = "data", y = "CDF")) + 
+    ggplot2::geom_point(ggplot2::aes_string(colour = "factor(cluster_id)")) + 
+    ggplot2::theme_classic() + ggplot2::geom_step(data = data.frame(x = c(Survival_object$time, 
+                                                        max(grid_tr)), y = c(1 - Survival_object$surv, 1)), 
+                                                  ggplot2::aes_string(x = "x", y = "y")) + 
+    viridis::scale_colour_viridis(discrete = TRUE) + 
+    ggplot2::theme(legend.position = "none") + ggplot2::ylab("CDF") + ggplot2::xlab("Data")
+  if (!is.null(label_vector)) {
+    p + ggplot2::geom_text(data = data.frame(txt = label_vector[!is.na(grid_tr)], 
+                                    x = grid_tr[!is.na(grid_tr)], 
+                                    y = cdf + 0.05, cluster_id = clustering[!is.na(grid_tr)]), 
+                           ggplot2::aes_string(x = "x", y = "y", colour = "factor(cluster_id)", 
+                             label = "txt"))
+  }
+  else {
+    return(p)
+  }
 }
