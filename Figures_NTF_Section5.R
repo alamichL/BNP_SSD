@@ -4,7 +4,7 @@ library(Ckmeans.1d.dp)
 library(fields)
 library(ggthemes)
 library(NMF)
-source("~/Documents/Github/BNP_SSD/NTF/scripts/helper_functions.R")
+source("NTF/scripts/helper_functions.R")
 library(nnTensor)
 library(multiway)
 library(RColorBrewer)
@@ -13,7 +13,7 @@ library(ggrepel)
 library(ComplexHeatmap)
 library("ggpubr")
 
-fig_path <- "~/Documents/Github/BNP_SSD/NTF/figures/"
+fig_path <- "NTF/figures/"
 
 scale_rows = function(M){
   M  %>% 
@@ -26,7 +26,7 @@ scale_columns = function(M){
 }
 
 
-tensor_species_noNA = readRDS('~/Documents/Github/BNP_SSD/data/species_association_tensor_noNA.Rdata')
+tensor_species_noNA = readRDS('data/species_association_tensor_noNA.Rdata')
 count_tests = apply(tensor_species_noNA, MARGIN = 3, FUN = function(m){rowSums(m)})
 species_na = which(rowSums(count_tests) == 0) # species not tested for any contaminant
 length(species_na)
@@ -57,7 +57,7 @@ X_na = tensor_species_NA1
 print(paste0("With ", dim(X_na)[2], " species and ", dim(X_na)[3], " contaminants."))
 print(paste0("With ",round(as.numeric(table(is.na(X_na))['TRUE'])/prod(dim(X_na))*100,2), " % of NA in the data."))
 
-source("~/Documents/Github/BNP_SSD/NTF/scripts/gathering_function.R")
+source("NTF/scripts/gathering_function.R")
 pdf(paste0(fig_path, "species_data.pdf"), width = 10, height= 5)
 repart_species <- plot_species_repart()
 dev.off()
@@ -67,7 +67,7 @@ dev.off()
 
 
 ### Plot cross_V ###
-crossV <- readRDS("~/Documents/Github/BNP_SSD/NTF/saves/crossV_data.rds")
+crossV <- readRDS("NTF/saves/crossV_data.rds")
 pdf(paste0(fig_path, "cross_validation_figure.pdf"), width = 12, height= 6)
 cross_validation_plot_label(crossV, 47, 5)
 dev.off()
@@ -84,7 +84,7 @@ print(rank)
 
 ### Select rank ###
 ntf_rm <- parafac(X_na, nfac=rank, nstart=20,const=c("nonneg","nonneg","nonneg"),verbose=F)
-saveRDS(ntf,file=paste0("~/Documents/Github/BNP_SSD/NTF/saves/ntf_chosen_rank_", rank,".rds"))
+saveRDS(ntf,file=paste0("NTF/saves/ntf_chosen_rank_", rank,".rds"))
 
 ntf_rm$C %>% 
   scale_columns() %>% 
