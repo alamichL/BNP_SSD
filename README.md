@@ -3,7 +3,7 @@ This repository presents the code used in the paper: **Species Sensitivity Distr
 and Igor Prünster*. 
 
 ## BNP-SSD Shiny application
-A Shiny application named BNP-SSD is available at XXX. 
+A Shiny application named BNP-SSD is available at [`BNP-SSD`](https://alamichl.shinyapps.io/BNP_SSD/). 
 This application, inspired by the [`shinyssdtools`](https://bcgov.github.io/shinyssdtools/) [Shiny application](https://bcgov-env.shinyapps.io/ssdtools/), is based on the functions of the package [`BNPdensity`](https://cran.r-project.org/web/packages/BNPdensity/index.html). 
 The BNP model described in the paper is adjusted on datasets either censored or not. The fitted density is plotted as well as some goodness of fit plots. Finally, the induced optimal clustering is computed and plotted.
 

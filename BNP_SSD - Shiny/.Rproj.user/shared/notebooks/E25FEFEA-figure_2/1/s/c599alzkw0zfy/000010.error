@@ -1,0 +1,1 @@
+{"frames":[],"message":"Erreur dans qmixnorm(0.05, mus = c(-2, 5), sigmas = c(1, 1), probs = c(2,  : \n  impossible de trouver la fonction \"qmixnorm\"\n"}
