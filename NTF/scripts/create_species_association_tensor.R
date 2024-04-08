@@ -3,10 +3,10 @@ library(parallel)
 library(abind)
 library(rTensor)
 
-source("~/Documents/Github/BNP_SSD/NTF/scripts/load_rivm_db.R")
+source("NTF/scripts/load_rivm_db.R")
 
 get_all_species <- function() {
-  get(load("rivm_db.Rdata")) %>%
+  get(load("data/rivm_db.Rdata")) %>%
     dplyr::select(species) %>%
     unique() %>%
     unlist() %>%

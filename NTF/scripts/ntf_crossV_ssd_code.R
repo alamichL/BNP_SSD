@@ -1,6 +1,6 @@
 library(tidyverse)
 library(ggthemes)
-source("~/Documents/Github/BNP_SSD/NTF/scripts/helper_functions.R")
+source("NTF/scripts/helper_functions.R")
 library(multiway)
 library(patchwork)
 library(foreach)
@@ -10,7 +10,7 @@ registerDoParallel(cores=32)
 set.seed(197)
 
 ## Loading of the data
-tensor_species_noNA = readRDS('~/Documents/Github/BNP_SSD/data/species_association_tensor_noNA.Rdata')
+tensor_species_noNA = readRDS('data/species_association_tensor_noNA.Rdata')
 
 tensor_species_NA = tensor_species_noNA
 for(i in 1:dim(tensor_species_noNA)[3]){
@@ -41,4 +41,4 @@ X_na = tensor_species_NA1#[,,-which(V==0)]
 # cross validation
 cross <- cross_validation(X_na, X_na, p=0.1, rank=c(seq(1,29, by = 2), 30:50), save=T)
 
-saveRDS(cross,file=paste0("~/Documents/Github/BNP_SSD/NTF/saves/crossV_data.rds"))
+saveRDS(cross,file=paste0("NTF/saves/crossV_data.rds"))

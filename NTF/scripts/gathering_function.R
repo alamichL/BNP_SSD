@@ -56,9 +56,9 @@ plot_kmeans_decomposition <- function(tensor_factor, select = NULL, unsep = NULL
     scale_fill_ptol(labels = c('out', 'in'), name = 'Clustered')
 }
 
-source("~/Documents/Github/BNP_SSD/NTF/scripts/create_species_association_tensor.R")
+source("NTF/scripts/create_species_association_tensor.R")
 get_column = function(column){
-  get(load('rivm_db.Rdata')) %>% 
+  get(load('data/rivm_db.Rdata')) %>% 
     .[,column] %>% 
     unlist() %>% 
     as.character()
@@ -69,7 +69,7 @@ species <- get_column('species')
 species_major <- c(major, species) %>%
   setNames(c(species, major))
 
-major_codes <- read.csv("major_codes.csv")
+major_codes <- read.csv("data/major_codes.csv")
 major_phylum <- c(major_codes$Major_code, major_codes$Phylum.Division) %>%
   setNames(c(major_codes$Phylum.Division, major_codes$Major_code))
 major_group <- c(major_codes$Major_code, major_codes$SSD_book_group) %>%
@@ -103,7 +103,7 @@ get_idx_to_species_converter <- function() {
 }
 idx_to_species_converter <- get_idx_to_species_converter()
 
-cont_code <- read.csv("chem_name_and_index.csv")
+cont_code <- read.csv("data/chem_name_and_index.csv")
 idx_to_cont <- c(cont_code$name, cont_code$index) %>%
   setNames(c(cont_code$index, cont_code$name))
 

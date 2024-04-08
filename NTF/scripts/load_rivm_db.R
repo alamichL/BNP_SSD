@@ -102,7 +102,7 @@ Correct_some_stuff_in_the_database = function(db){
 }
 
 
-rivm_db_hickey_filter = get(load('rivm_db.Rdata')) %>%
+rivm_db_hickey_filter = get(load('data/rivm_db.Rdata')) %>%
   Correct_some_stuff_in_the_database %>%
   # subset(endpoint%in%c('LC50','EC50')) %>% #Selection some endpoints
   filter_according_to_Hickey2012 %>%
@@ -123,7 +123,7 @@ rivm_db_hickey_filter = get(load('rivm_db.Rdata')) %>%
   mutate(shorter_name = ifelse(is.na(chem.name2), yes = chem.name %>% as.character(), no = chem.name2 %>% as.character()))
 
 
-rivm_db = get(load('rivm_db.Rdata')) %>%
+rivm_db = get(load('data/rivm_db.Rdata')) %>%
   Correct_some_stuff_in_the_database %>%
   subset(endpoint%in%c('LC50','EC50')) %>% #Selection some endpoints
   # filter_according_to_Hickey2012 %>%
@@ -374,6 +374,6 @@ get_log_dat_noname = function(contaminant, cens = FALSE,
     })
 }
 
-saveRDS(rivm_db_hickey_filter, file = '~/Documents/Github/BNP_SSD/data/rivm_db_hickey_filter.RDS')
+saveRDS(rivm_db_hickey_filter, file = 'data/rivm_db_hickey_filter.RDS')
 
 
