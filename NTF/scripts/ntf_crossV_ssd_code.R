@@ -31,12 +31,14 @@ for(c in (1:dim(tensor_species_NA1)[3])){
   V = c(V,v_c)
 }
 
-X_na = tensor_species_NA1#[,,-which(V==0)]
+X_na = tensor_species_NA1[,,-which(V==0)]
 
 
  count_tests = apply(X_na, MARGIN = 3, FUN = function(m){rowSums(!is.na(m))})
  species_na = which(rowSums(count_tests) == 0)
  X_na <- X_na[-species_na,-species_na,]
+
+dim(X_na) 
 
 # cross validation
 cross <- cross_validation(X_na, X_na, p=0.1, rank=c(seq(1,29, by = 2), 30:50), save=T)

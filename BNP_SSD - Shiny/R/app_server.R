@@ -1,3 +1,13 @@
+# Portions of this file are derived from the `shinyssdtools` project,
+# licensed under the Apache License, Version 2.0.
+# See the NOTICE file for attribution details.
+
+# BNP-SSD - Bayesian Species Sensitivity Distribution App
+# Copyright 2025 Louise Alamichel, Julyan Arbel, 
+# Guillaume Kon Kam King, and Igor Prünster
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 app_server <- function(input, output, session) {
   ########### Reactives --------------------
   # --- upload data

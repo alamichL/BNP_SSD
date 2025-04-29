@@ -1,0 +1,25 @@
+BNP-SSD – A Shiny App for Bayesian Species Sensitivity Distributions  
+Copyright 2025 Louise Alamichel, Julyan Arbel,  
+Guillaume Kon Kam King, and Igor Prünster
+
+This product includes modified software originally developed as part of the  
+`shinyssdtools` project, available at: https://https://bcgov-env.shinyapps.io/ssdtools/
+
+The original `shinyssdtools` software is licensed under the Apache License, Version 2.0.  
+You may obtain a copy of the license at:  
+http://www.apache.org/licenses/LICENSE-2.0
+
+Modifications made in this application include:
+
+- UI changes in `R/app_ui.R`: simplified the layout to align with our Bayesian nonparametric (BNP) approach; added a panel for displaying clustering results.
+- Server logic in `R/app_server.R`: replaced parametric SSD modeling tools with a fully BNP workflow using the `BNPdensity` R package; updated all output plots accordingly.
+- Application structure in `R/functions.R`: retained general-purpose Shiny utility functions; removed functions specific to parametric models and added new ones for processing BNP outputs.
+- Label translation in `R/translation.R`: updated button and label names to reflect the revised interface and support user-uploaded datasets.
+
+Additionally, the original `extdata/names.xlsx` file from `shinyssdtools`—used for dynamic label translation—has been retained with updated content matching the new user interface.
+
+These modifications were made as part of a research project led by Louise Alamichel, Julyan Arbel, Guillaume Kon Kam King, and Igor Prünster, with the goal of improving ecological risk assessments using Bayesian nonparametric methods. At the time of development, the coding work was conducted at the Centre Inria, Université de Grenoble.
+
+Portions of the original code—particularly those handling the UI framework and initial data structure setup—are retained under the terms of the Apache License, Version 2.0.
+
+This application is associated with an academic article currently in preparation, co-authored by the individuals listed above.
