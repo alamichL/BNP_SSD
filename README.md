@@ -11,6 +11,7 @@ The BNP model described in the paper is adjusted on datasets either censored or 
 This application is licensed under the Apache License, Version 2.0.
 It includes modified code from [`shinyssdtools`](https://bcgov.github.io/shinyssdtools/) [Shiny application](https://bcgov-env.shinyapps.io/ssdtools/), also distributed under the Apache License 2.0. See the NOTICE file for details on the modifications and attributions.
 
+[//]: # (This is a comment.)  
 // ### Citation
 
 // If you use BNP-SSD in your work, please cite the associated research article (forthcoming):
