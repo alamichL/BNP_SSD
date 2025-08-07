@@ -4,8 +4,16 @@ and Igor Prünster*.
 
 ## BNP-SSD Shiny application
 A Shiny application named BNP-SSD is available at [`BNP-SSD`](https://alamichl.shinyapps.io/BNP_SSD/). 
-This application, inspired by the [`shinyssdtools`](https://bcgov.github.io/shinyssdtools/) [Shiny application](https://bcgov-env.shinyapps.io/ssdtools/), is based on the functions of the package [`BNPdensity`](https://cran.r-project.org/web/packages/BNPdensity/index.html). 
+This application is based on the functions of the package [`BNPdensity`](https://cran.r-project.org/web/packages/BNPdensity/index.html). 
 The BNP model described in the paper is adjusted on datasets either censored or not. The fitted density is plotted as well as some goodness of fit plots. Finally, the induced optimal clustering is computed and plotted.
+### License
+
+This application is licensed under the Apache License, Version 2.0.
+It includes modified code from [`shinyssdtools`](https://bcgov.github.io/shinyssdtools/) [Shiny application](https://bcgov-env.shinyapps.io/ssdtools/), also distributed under the Apache License 2.0. See the NOTICE file for details on the modifications and attributions.
+
+[//]: # ( ### Citation)  
+[//]: # (If you use BNP-SSD in your work, please cite the associated research article :)  
+[//]: # (   Louise Alamichel, Julyan Arbel, Guillaume Kon Kam King, and Igor Prünster. Bayesian nonparametric approaches to species sensitivity distributions.)  
 
 ## Abstract
 We present a novel approach to ecological risk assessment by reexamining the Species Sensitivity Distribution (SSD) method within a Bayesian nonparametric (BNP) framework. Widely mandated by environmental regulatory bodies globally, SSD has faced criticism due to its historical reliance on parametric assumptions when modeling species variability. By adopting nonparametric mixture models, we address this limitation, establishing a more statistically robust foundation for SSD. 
