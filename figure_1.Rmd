@@ -145,7 +145,7 @@ create_dataset_list <- function() {
   expand.grid(dataset_creators_list %>% names(), sizes) %>%
     (function(grid) {
       mapply(FUN = function(creator_name, size) {
-        dataset_creators_list[[creator_name]](size = size, number = 40)
+        dataset_creators_list[[creator_name]](size = size, number = 100)
       }, grid$Var1, grid$Var2, SIMPLIFY = F) %>%
         setNames(mapply(FUN = function(creator_name, size) paste(creator_name, size, sep = ""), grid$Var1, grid$Var2, SIMPLIFY = F))
     })
