@@ -27,7 +27,7 @@ library(survival)
 library(ggthemes)
 library(sn)
 library(forcats)
-library(SALSO)
+library(salso)
 ```
 
 
@@ -156,7 +156,7 @@ convert_species_to_SSDbookGroup <- function(keys) {
     convert_major_to_SSDbookGroup()
 }
 
-plot_cdf_group_and_cluster <- function(fit, contaminant_short_name, optimal_clustering, species_convert_fun, title = TRUE) {
+plot_cdf_group_and_cluster <- function(fit, contaminant_short_name, optimal_clustering, species_convert_fun, title = TRUE, pointwise_CI = FALSE) {
   c_name <- contaminant_short_name
   fit$data_ <- fit$data
 
@@ -174,7 +174,18 @@ plot_cdf_group_and_cluster <- function(fit, contaminant_short_name, optimal_clus
   }
 
   curve_dat <- tibble(xs = get_plotting_range(fit$data_)) %>%
-    mutate(cdf_ = get_cdf(fit, xs = xs)) %>%
+    (function(df){
+      if(pointwise_CI){
+        get_CDF_with_quantiles_BNPdensity(fit, xs = df$xs) %>% 
+          dplyr::rename(cdf_ = mean) %>% 
+          return
+      }
+      else{
+        df %>% 
+            mutate(cdf_ = get_cdf(fit, xs = xs)) %>%
+          return()
+      }
+    }) %>% 
     (function(df) {
       rbind(
         df %>% mutate(colour_scheme = "Coloured by species group"),
@@ -206,6 +217,14 @@ plot_cdf_group_and_cluster <- function(fit, contaminant_short_name, optimal_clus
     geom_line(data = curve_dat %>%
       mutate(colour_scheme = factor(colour_scheme, levels = c("Coloured by species group", "Coloured by cluster membership"))), aes(x = xs, y = cdf_, colour = NULL, label = NULL))
 
+  if(pointwise_CI){
+    p = p + 
+      geom_ribbon(data = curve_dat %>% 
+                    mutate(colour_scheme = factor(colour_scheme, levels = c("Coloured by species group", "Coloured by cluster membership"))), 
+                  aes(x = xs, y = NULL, ymin = lower, ymax = upper, colour = NULL, label = NULL), alpha = 0.2) +
+      ylab("Fraction affected (with pointwise 95% CI)")
+  }
+  
   if (title) {
     return(p + ggtitle(c_name))
   } else {
@@ -261,6 +280,21 @@ p <- plot_cdf_group_and_cluster(
 )
 print(p)
 pdf("figures/example_clustering_post_analysis.pdf", width = 8, height = 4)
+print(p)
+dev.off()
+```
+
+```{r}
+p <- plot_cdf_group_and_cluster(
+  fit = carbaryl_fit_nc,
+  contaminant_short_name = "Carbaryl",
+  optimal_clustering = carbaryl_fit_optimal_clustering_nc,
+  species_convert_fun = convert_species_to_SSDbookGroup,
+  title = F, 
+  pointwise_CI = TRUE
+)
+print(p)
+pdf("figures/example_clustering_post_analysis_credible_bands.pdf", width = 8, height = 4)
 print(p)
 dev.off()
 ```
