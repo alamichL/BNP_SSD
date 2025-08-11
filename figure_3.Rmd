@@ -212,7 +212,7 @@ plot_cdf_group_and_cluster <- function(fit, contaminant_short_name, optimal_clus
     facet_grid(. ~ colour_scheme) +
     ggthemes::theme_few() +
     ggthemes::scale_colour_ptol(guide = "none") +
-    xlab("Concentration") +
+    xlab(expression(log[10]~"Concentration")) +
     ylab("Fraction affected") +
     geom_line(data = curve_dat %>%
       mutate(colour_scheme = factor(colour_scheme, levels = c("Coloured by species group", "Coloured by cluster membership"))), aes(x = xs, y = cdf_, colour = NULL, label = NULL))
