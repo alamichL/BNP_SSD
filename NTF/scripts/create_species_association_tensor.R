@@ -2,6 +2,11 @@ library(tidyverse)
 library(parallel)
 library(abind)
 library(rTensor)
+library(pbapply)
+
+
+source("NTF/scripts/fit_all_contaminants.R") # This may have to be run multiple times, depending on how stable is your system
+source("NTF/scripts/estimate_all_clusterings.R")
 
 source("NTF/scripts/load_rivm_db.R")
 
@@ -19,12 +24,13 @@ get_species_names <- function(CAS) {
 
 
 get_all_tested_contaminants <- function() {
-  # list.files('minVIs/') %>%
-  #   c(list.files('minVIs_new/')) %>%
-  list.files("minVIs_new//") %>%
-    (function(v) v[!grepl("nc", v)]) %>%
-    unique() %>%
-    gsub("c.Rdata", "", .)
+  list.files("NTF/saves/clustering_estimates/") %>%
+    sapply(FUN = function(x) {
+      x %>%
+        str_split_1(pattern = "minVI") %>% 
+        first
+    }) %>%
+    return()
 }
 
 get_species_to_idx_converter <- function() {
@@ -47,15 +53,14 @@ species_to_idx_converter <- get_species_to_idx_converter()
 
 
 get_clustering <- function(CAS) {
-  fname <- paste("minVIs_new/", CAS, "c.Rdata", sep = "")
+  fname <- paste("NTF/saves/clustering_estimates/", CAS, "minVI.rds", sep = "")
 
   fit1.VI <- readRDS(fname)
 
-  nclust <- length(unique(fit1.VI$cl))
-
   data.frame(
     nm = get_species_names(CAS),
-    alloc = fit1.VI$cl
+    alloc = fit1.VI %>% 
+      as.vector()
   ) %>%
     mutate(CAS = CAS) %>%
     return()
@@ -108,5 +113,5 @@ create_full_association_tensor_noNA <- function() {
                                                                             get_all_species = get_all_species, 
                                                                             species_to_idx_converter = species_to_idx_converter)}) %>%
     Reduce(function(x, y) abind(x, y, along = 3), .) %>%
-    saveRDS("species_association_tensor_noNA.Rdata")
+    saveRDS("saves/species_association_tensor_noNA.Rdata")
 }
