@@ -37,7 +37,7 @@ fit_and_save_one = function(c_name = 'Atrazine', cens = F, Nit = 10000,
 
 
   if(file.exists(fname)){
-    if(file.info(fname)$size>5*10**5){
+    if(file.size(fname) > 5 * 10^5) {
       print(paste(fname, 'already computed'))
       return()
     }

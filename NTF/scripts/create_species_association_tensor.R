@@ -1,7 +1,6 @@
 library(tidyverse)
 library(parallel)
 library(abind)
-library(rTensor)
 library(pbapply)
 
 
@@ -108,10 +107,14 @@ create_species_association_matrix_for_one_c <- function(CAS, species_to_idx_conv
 
 
 create_full_association_tensor_noNA <- function() {
+  
+  dir.create("saves", recursive = TRUE, showWarnings = FALSE)
+  
   get_all_tested_contaminants() %>%
     pbapply::pblapply(FUN = function(CAS) {create_species_association_matrix_for_one_c(CAS = CAS, 
                                                                             get_all_species = get_all_species, 
                                                                             species_to_idx_converter = species_to_idx_converter)}) %>%
-    Reduce(function(x, y) abind(x, y, along = 3), .) %>%
+    Reduce(function(x, y) abind::abind(x, y, along = 3), .) %>%
     saveRDS("saves/species_association_tensor_noNA.Rdata")
 }
+create_full_association_tensor_noNA()
