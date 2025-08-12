@@ -23,6 +23,8 @@ fit_and_save_one = function(c_name = 'Atrazine', cens = F, Nit = 10000,
                 centred_scaled = F, 
                 geomean = T, 
                 filt_hickey = filt_hickey) %>% 
+    mutate(left = ifelse(is.infinite(left), NA, left),
+           right = ifelse(is.infinite(right), NA, right)) %>%
     fun(Nit = 10)
   
   censtxt = ifelse(cens, 'c','nc')
@@ -40,8 +42,11 @@ fit_and_save_one = function(c_name = 'Atrazine', cens = F, Nit = 10000,
       return()
     }
     else{
-      fit = fit$data_ %>% 
-        fun(Nit = Nit)
+      tryCatch({
+        fit = fit$data_ %>% fun(Nit = Nit)
+      }, error = function(e) {
+        message("Error in fitting process: ", e$message)
+      })
       
       if(save_) {saveRDS(fit, file = fname)
         print(paste('saved', fname))}
