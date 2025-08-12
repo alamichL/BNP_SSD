@@ -116,18 +116,35 @@ create_skewed_normal_datasets = function(size = 10, number = 40, xi = 0, omega =
     lapply(FUN =  function(x) rsn(n = size, xi = xi, omega = omega, alpha = alpha)%>% as.numeric()) 
 }
 
-create_dataset_list = function(){
-  dataset_creators_list = list('normal' = create_normal_datasets,
-                               'student' = create_student_datasets,
-                               'multimodal' = function(size, number) create_multimodal_datasets(size = size, number = number,
-                                                                                                mus = c(-2, 5),
-                                                                                                sigmas = c(1,1),
-                                                                                                unnormalized_weights = c(2,4)))
-  sizes = c(10,20,50,100)
-  expand.grid(dataset_creators_list %>% names, sizes) %>% 
-    (function(grid){
-      mapply(FUN = function(creator_name, size){dataset_creators_list[[creator_name]](size = size, number = 40)}, grid$Var1, grid$Var2, SIMPLIFY = F) %>% 
-        setNames(mapply(FUN = function(creator_name, size) paste(creator_name, size, sep = ''), grid$Var1, grid$Var2, SIMPLIFY = F))})
+create_dataset_list <- function() {
+  dataset_creators_list <- list(
+    "normal" = create_normal_datasets,
+    "student" = create_student_datasets,
+    "bimodal" = function(size, number) {
+      create_multimodal_datasets(
+        size = size, number = number,
+        mus = c(-2, 5),
+        sigmas = c(1, 1),
+        unnormalized_weights = c(2, 4)
+      )
+    },
+    "trimodal" = function(size, number) {
+      create_multimodal_datasets(
+        size = size, number = number,
+        mus = c(-5, 0, 5),
+        sigmas = c(1, 1, 2),
+        unnormalized_weights = c(2, 3, 2)
+      )
+    }
+  )
+  sizes <- c(10, 20, 50, 100)
+  expand.grid(dataset_creators_list %>% names(), sizes) %>%
+    (function(grid) {
+      mapply(FUN = function(creator_name, size) {
+        dataset_creators_list[[creator_name]](size = size, number = 100)
+      }, grid$Var1, grid$Var2, SIMPLIFY = F) %>%
+        setNames(mapply(FUN = function(creator_name, size) paste(creator_name, size, sep = ""), grid$Var1, grid$Var2, SIMPLIFY = F))
+    })
 }
 
 load_or_compute = function(dataset_type, idx, method){
@@ -206,6 +223,11 @@ get_quantiles_for_all_methods = function(list_of_list_of_fits, reference_quantil
         Reduce(rbind,.)
 }
 
+MC_error = function(x){
+  if(length(x) == 1) return(0)
+  else 2*Sd(x)/sqrt(length(x))
+}
+
 get_quantile_CI_mean_length_for_all_methods = function(list_of_list_of_fits, reference_quantile, numit = 2500, ncores = 6, nbootsamples = 102){
   list_of_list_of_fits %>% 
     lapply(FUN = function(list_of_fits){
@@ -223,10 +245,13 @@ get_quantile_CI_mean_length_for_all_methods = function(list_of_list_of_fits, ref
                         mean(resdf$HC-reference_quantile),
                         reference_quantile,
                         mean(resdf$CI_length),
-                        quantile(resdf$CI_length, probs = c(0.025,0.5,0.975)))} ) %>% 
+                        quantile(resdf$CI_length, probs = c(0.025,0.5,0.975)),
+                        MC_error(resdf$HC),
+                        MC_error(abs(resdf$HC-reference_quantile)),
+                        MC_error(resdf$CI_length))} ) %>% 
         t %>% 
         data.frame() %>% 
-        setNames(c('Mean_estimate','infCI','med','supCI', 'std', 'Mean_absolute_bias', 'Mean_bias', 'Reference', 'Mean_CI_length','len_infCI','len_med','len_supCI')) %>% 
+        setNames(c('Mean_estimate','infCI','med','supCI', 'std', 'Mean_absolute_bias', 'Mean_bias', 'Reference', 'Mean_CI_length','len_infCI','len_med','len_supCI', "MC_error_HC", "MC_error_Mean_absolute_bias", "MC_error_CI_length")) %>% 
         mutate(type = list_of_fits[[1]]$qmethod)
           }) %>% 
         Reduce(rbind,.)
@@ -306,10 +331,10 @@ get_MISE_for_all_methods = function(list_of_list_of_fits, reference_dist, numit 
       list_of_fits %>% 
         mclapply(FUN = function(fit){cmp_ISE_fit(fit %>% thin_fit(numit = numit), reference_dist)$value}, mc.cores = ncores) %>% 
         unlist() %>% 
-        (function(x) c(mean(x), quantile(x, probs = c(0.025,0.5,0.975)), Sd(x)) ) %>% 
+        (function(x) c(mean(x), quantile(x, probs = c(0.025,0.5,0.975)), Sd(x), MC_error(x)) ) %>% 
         t %>% 
         data.frame() %>% 
-        setNames(c('MISE','infCI','med','supCI', 'std')) %>% 
+        setNames(c('MISE','infCI','med','supCI', 'std', "MC_error")) %>% 
         mutate(type = list_of_fits[[1]]$qmethod)
           }) %>% 
         Reduce(rbind,.)
@@ -391,7 +416,7 @@ fit_all_methods_on_all_the_datasets(dataset_list = dataset_list, funlist = funli
 
 ```{r, eval = F}
 
-expand.grid(c('normal', 'student', 'multimodal'), c(10,20,50,100)) %>% 
+expand.grid(c('normal', 'student', 'bimodal'), c(10,20,50,100)) %>% 
   (function(df) mapply(FUN = paste, df$Var1,df$Var2, sep = '')) %>% 
   lapply(Collect_in_a_single_file)
 
@@ -407,14 +432,14 @@ library(knitr)
 ```{r}
 to_plot = list()
 
-datasets = expand.grid(c('normal', 'student', 'multimodal'), c(10,20,50,100))
+datasets = expand.grid(c('normal', 'student', 'bimodal'), c(10,20,50,100))
 reference_densities = list('normal' = dnorm,
                   'student' = function(x) dt(x, df = 3, ncp = -2),
-                  'multimodal' = function(x) dmixnorm(x, mus = c(-2, 5), sigmas = c(1,1), probs = c(2,4) %>% normalise_weights))
+                  'bimodal' = function(x) dmixnorm(x, mus = c(-2, 5), sigmas = c(1,1), probs = c(2,4) %>% normalise_weights))
 
 reference_quantiles = list('normal' = qnorm(0.05),
                   'student' = qt(0.05, df = 3, ncp = -2),
-                  'multimodal' = qmixnorm(0.05, mus = c(-2, 5), sigmas = c(1,1), probs = c(2,4) %>% normalise_weights))
+                  'bimodal' = qmixnorm(0.05, mus = c(-2, 5), sigmas = c(1,1), probs = c(2,4) %>% normalise_weights))
 
 
 for( i in seq_len(nrow(datasets))){
@@ -423,23 +448,35 @@ for( i in seq_len(nrow(datasets))){
     load_file %>% 
     (function(fit_list){
       df_RMISE = fit_list %>% 
-        get_MISE_for_all_methods(reference = reference_densities[[datasets[i,1]]], numit = 2000) %>% 
-        dplyr::select(type, MISE) %>% 
-        mutate(size = datasets[i,2], data_type = datasets[i,1]) 
+        get_MISE_for_all_methods(reference_dist = reference_densities[[datasets[i,1]]], numit = 2000, ncores = 2) %>% 
+        dplyr::select(type, MISE, MC_error) %>% 
+        dplyr::rename(MC_error_MISE = MC_error) %>%
+        dplyr::mutate(size = datasets[i,2], data_type = datasets[i,1]) 
       
       df_quantile = fit_list %>% 
         get_quantile_CI_mean_length_for_all_methods(reference_quantile = reference_quantiles[[datasets[i,1]]], 
-                                                    numit = 10000) %>% 
-        dplyr::select(Mean_absolute_bias, Mean_CI_length, type)
+                                                    numit = 10000, ncores = 2) %>% 
+        dplyr::select(Mean_absolute_bias, Mean_CI_length, type, MC_error_Mean_absolute_bias, MC_error_CI_length) 
       
       left_join(df_RMISE, df_quantile)
     })
-  
 }
 
-to_plot = to_plot %>% 
-  Reduce(rbind,.) %>%
-  gather(variable, value, MISE, Mean_absolute_bias:Mean_CI_length)
+to_plot <- to_plot %>%
+  Reduce(rbind, .) %>%
+  (function(df) {
+    estimates <- df %>%
+      dplyr::select(-starts_with("MC_error")) %>%
+      gather(variable, value, MISE, Mean_absolute_bias:Mean_CI_length)
+
+    MC_errors <- df %>%
+      dplyr::select(-MISE, -Mean_absolute_bias, -Mean_CI_length) %>%
+      gather(variable, MC_error, starts_with("MC_error")) %>%
+      mutate(variable = gsub("MC_error_", "", variable)) %>% 
+      mutate(variable = gsub("CI_length", "Mean_CI_length", variable)) 
+
+    left_join(estimates, MC_errors)
+  })
 
 ```
 
@@ -451,7 +488,7 @@ p = to_plot %>%
   mutate(data_type = stringr::str_to_title(data_type)) %>% 
   mutate(data_type = gsub("Student", "t-Student", data_type)) %>% 
   mutate(data_type = factor(data_type, 
-                            levels = c("Normal", "t-Student", "Multimodal"))) %>% 
+                            levels = c("Normal", "t-Student", "Bimodal"))) %>% 
   mutate(variable = gsub("_", " ", variable)) %>% 
   mutate(variable = gsub("Mean absolute bias", "MAE", variable)) %>% 
   mutate(variable = gsub("Mean CI length", "MCIL", variable)) %>% 
@@ -460,6 +497,7 @@ p = to_plot %>%
   ggplot(aes(y = value, x = factor(size), colour = type, group = type)) +
   geom_line(linetype = 'dashed') + 
   geom_point(aes(shape = type)) +
+  geom_segment(aes(xend = factor(size), y = value - MC_error, yend = value + MC_error)) +
   xlab('dataset size') +
   facet_grid(variable~data_type, scale = 'free_y') + 
   ggthemes::theme_few() + 
@@ -478,4 +516,61 @@ dev.off()
 pdf('figures/graph_comparison_simulated_data.pdf', height = 5, width = 7)
 print(p + theme(legend.position = "none"))
 dev.off()
+```
+
+# Extra simulations
+
+```{r}
+to_plot = list()
+
+datasets = expand.grid(c('normal', 'student', 'bimodal', 'trimodal'), c(10,20,50,100))
+reference_densities = list('normal' = dnorm,
+                  'student' = function(x) dt(x, df = 3, ncp = -2),
+                  'bimodal' = function(x) dmixnorm(x, mus = c(-2, 5), sigmas = c(1,1), probs = c(2,4) %>% normalise_weights),
+                  'trimodal' = function(x) dmixnorm(x, mus = c(-5, 0, 5), sigmas = c(1, 1, 2), probs = c(2, 3, 2) %>% normalise_weights)
+                  )
+
+reference_quantiles = list('normal' = qnorm(0.05),
+                  'student' = qt(0.05, df = 3, ncp = -2),
+                  'bimodal' = qmixnorm(0.05, mus = c(-2, 5), sigmas = c(1,1), probs = c(2,4) %>% normalise_weights),
+                  'trimodal' = qmixnorm(0.05, mus = c(-5, 0, 5), sigmas = c(1, 1, 2), probs = c(2, 3, 2) %>% normalise_weights)
+                  )
+
+
+for( i in seq_len(nrow(datasets))){
+  print(i)
+  to_plot[[i]] = paste(datasets[i,1], datasets[i,2], sep = '') %>% 
+    load_file %>% 
+    (function(fit_list){
+      df_RMISE = fit_list %>% 
+        get_MISE_for_all_methods(reference_dist = reference_densities[[datasets[i,1]]], numit = 2000, ncores = 2) %>% 
+        dplyr::select(type, MISE, MC_error) %>% 
+        dplyr::rename(MC_error_MISE = MC_error) %>%
+        dplyr::mutate(size = datasets[i,2], data_type = datasets[i,1]) 
+      
+      df_quantile = fit_list %>% 
+        get_quantile_CI_mean_length_for_all_methods(reference_quantile = reference_quantiles[[datasets[i,1]]], 
+                                                    numit = 10000, ncores = 2) %>% 
+        dplyr::select(Mean_absolute_bias, Mean_CI_length, type, MC_error_Mean_absolute_bias, MC_error_CI_length) 
+      
+      left_join(df_RMISE, df_quantile)
+    })
+}
+
+to_plot <- to_plot %>%
+  Reduce(rbind, .) %>%
+  (function(df) {
+    estimates <- df %>%
+      dplyr::select(-starts_with("MC_error")) %>%
+      gather(variable, value, MISE, Mean_absolute_bias:Mean_CI_length)
+
+    MC_errors <- df %>%
+      dplyr::select(-MISE, -Mean_absolute_bias, -Mean_CI_length) %>%
+      gather(variable, MC_error, starts_with("MC_error")) %>%
+      mutate(variable = gsub("MC_error_", "", variable)) %>% 
+      mutate(variable = gsub("CI_length", "Mean_CI_length", variable)) 
+
+    left_join(estimates, MC_errors)
+  })
+
 ```
